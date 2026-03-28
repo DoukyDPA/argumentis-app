@@ -4,7 +4,7 @@ import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc } from 'firebase
 import { 
   PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
   BookOpen, Send, FileText, Target, Sparkles, Info, Clock, Users, UserCircle, 
-  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Type, Mail, Code, Brain, ListOrdered, User
+  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Type, Mail, Code, Brain, ListOrdered, User, Paperclip
 } from 'lucide-react';
 
 // Imports des fichiers refactorisés
@@ -304,6 +304,32 @@ const App = () => {
                 <div className="bg-white rounded-[2.5rem] p-10 shadow-[0_20px_60px_rgba(9,20,38,0.05)] relative overflow-hidden">
                   <textarea className="w-full bg-transparent border-none p-0 focus:ring-0 text-xl serif-text italic resize-none min-h-[250px]" placeholder="Texte source ou message principal..." value={input} onChange={(e) => setInput(e.target.value)} />
                 </div>
+              </div>
+              
+              {/* Texte de référence optionnel */}
+              <div className="space-y-4">
+                <button 
+                  onClick={() => setShowRef(!showRef)}
+                  className="flex items-center gap-2 text-sm font-bold text-[#0058be] hover:text-blue-800 transition-colors"
+                >
+                  <Paperclip size={18} />
+                  {showRef ? 'Masquer le texte de référence' : 'Joindre un texte de référence (Modèle, Contexte...)'}
+                </button>
+
+                {showRef && (
+                  <div className="bg-[#f0f4f8] rounded-[2.5rem] p-8 shadow-inner border border-slate-100 animate-in fade-in slide-in-from-top-2">
+                     <div className="flex items-center gap-3 mb-4">
+                        <BookOpen size={18} className="text-[#0058be]" />
+                        <h3 className="text-xs font-black text-[#091426] uppercase tracking-widest">Matériau Source</h3>
+                     </div>
+                     <textarea 
+                        className="w-full bg-transparent border-none p-0 focus:ring-0 text-base sans-text font-medium leading-relaxed resize-y text-slate-700 min-h-[120px] placeholder:text-slate-400" 
+                        placeholder="Collez ici un discours précédent pour en imiter le style, des notes de cadrage, ou un document brut pour donner du contexte précis à l'IA..."
+                        value={referenceText}
+                        onChange={(e) => setReferenceText(e.target.value)}
+                     />
+                  </div>
+                )}
               </div>
             </section>
 
