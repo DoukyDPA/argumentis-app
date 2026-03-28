@@ -32,7 +32,9 @@ const firebaseConfig = isCanvas ? JSON.parse(__firebase_config) : {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'argumentis-prod-v1';
+
+// SÉCURITÉ : On remplace les "/" éventuels par des "_" pour ne pas casser le chemin des collections Firebase
+const appId = typeof __app_id !== 'undefined' ? String(__app_id).replace(/\//g, '_') : 'argumentis-prod-v1';
 const apiKey = isCanvas ? "" : (getEnv('VITE_GEMINI_API_KEY') || "VOTRE_CLE_API_GEMINI");
 
 const App = () => {
@@ -71,7 +73,6 @@ const App = () => {
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          // Import dynamique pour éviter les erreurs de compilation hors Canvas
           const { signInWithCustomToken } = await import('firebase/auth');
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
@@ -90,21 +91,24 @@ const App = () => {
   useEffect(() => {
     if (!user) return;
     
-    const docsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'documents');
-    
-    const unsubscribe = onSnapshot(docsRef, (snapshot) => {
-      const fetchedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setDocs(fetchedDocs);
-      if (fetchedDocs.length > 0 && !selectedDocId) {
-        setSelectedDocId(fetchedDocs[0].id);
-      }
-    }, (error) => {
-      console.error("Erreur de synchronisation des documents:", error);
-    });
+    try {
+      const docsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'documents');
+      
+      const unsubscribe = onSnapshot(docsRef, (snapshot) => {
+        const fetchedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setDocs(fetchedDocs);
+        
+        setSelectedDocId(prev => (fetchedDocs.length > 0 && !prev) ? fetchedDocs[0].id : prev);
+      }, (error) => {
+        console.error("Erreur de synchronisation des documents:", error);
+      });
 
-    return () => unsubscribe();
-  }, [user, selectedDocId]);
+      return () => unsubscribe();
+    } catch (err) {
+      console.error("Erreur lors de l'accès à Firestore:", err);
+    }
+  }, [user]);
 
   // Modules de rédaction
   const modules = [
@@ -138,7 +142,7 @@ const App = () => {
     if (!user) return;
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'documents', docId));
-      if (selectedDocId === docId) setSelectedDocId('');
+      setSelectedDocId(prev => prev === docId ? '' : prev);
     } catch (error) {
       console.error("Erreur lors de la suppression du document:", error);
     }
