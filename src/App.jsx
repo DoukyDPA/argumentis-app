@@ -294,8 +294,34 @@ const App = () => {
                 <h1 className="text-3xl font-light text-white serif-text italic">Projet Finalisé</h1>
               </div>
             </section>
-            <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-lg min-h-[800px]">
-              {showRaw ? <pre className="whitespace-pre-wrap text-sm p-8 bg-slate-50">{result}</pre> : formatResult(result)}
+            
+            <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden">
+              <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('[https://www.transparenttextures.com/patterns/natural-paper.png](https://www.transparenttextures.com/patterns/natural-paper.png)')]"></div>
+              
+              <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
+                <div className="sans-text">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300 mb-2">Génération Argumentis</p>
+                  <p className="text-base font-black text-[#091426] uppercase leading-none mb-1">Administration de {context.city}</p>
+                  <p className="text-sm font-bold text-slate-400 italic leading-none">{context.role}</p>
+                </div>
+                <div className="text-right sans-text relative z-10"><p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
+              </div>
+
+              <div className="relative z-10">
+                {showRaw ? (
+                  <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans p-8 bg-slate-50 rounded-2xl border border-slate-100">{result}</pre>
+                ) : (
+                  formatResult(result)
+                )}
+              </div>
+
+              <div className="mt-24 pt-12 border-t border-slate-50 flex flex-col items-end relative z-10">
+                <div className="text-right">
+                  <div className="w-40 h-20 mb-3 opacity-[0.05] flex items-center justify-end grayscale"><Building2 size={80} /></div>
+                  <p className="serif-text font-bold text-2xl text-[#091426] italic leading-none mb-1">{context.role}</p>
+                  <p className="sans-text text-[11px] text-slate-400 font-black uppercase tracking-widest">Territoire de {context.city}</p>
+                </div>
+              </div>
             </article>
           </div>
         )}
