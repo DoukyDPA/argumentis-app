@@ -24,21 +24,18 @@ export const Onboarding = ({ user, onComplete }) => {
 
   return (
     <div className="min-h-screen bg-[#e6eef6] flex items-center justify-center p-6">
-      <div className="bg-white max-w-md w-full rounded-[2.5rem] p-10 shadow-[0_20px_60px_rgba(9,20,38,0.05)] border border-slate-50 animate-in fade-in slide-in-from-bottom-8">
+      <div className="bg-white max-w-md w-full rounded-[2.5rem] p-10 shadow-[0_20px_60px_rgba(9,20,38,0.05)] border border-slate-50 animate-in fade-in slide-in-from-bottom-8 text-center">
         
-        {/* Intégration du Logo Argumentis */}
+        {/* Intégration du logo complet Argumentis */}
         <img 
           src="https://i.postimg.cc/vHdj0MkZ/Argumentis.png" 
           alt="Argumentis Logo" 
-          className="w-16 h-16 rounded-2xl mb-6 shadow-sm object-cover bg-white" 
+          className="w-auto h-16 mx-auto mb-8 object-contain" 
         />
         
-        <h1 className="serif-text text-3xl font-light text-[#091426] leading-tight mb-2">
-          Bienvenue sur <span className="font-semibold italic text-[#0058be]">Argumentis</span>
-        </h1>
         <p className="text-slate-500 text-sm font-medium mb-8">Personnalisons votre espace pour que l'IA s'adapte à votre contexte et vos objectifs.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5 text-left">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-500 uppercase px-1">Prénom (Requis)</label>
             <div className="relative">
