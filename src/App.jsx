@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { collection, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { 
   PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
   BookOpen, Send, FileText, Target, Sparkles, Info, Clock, Users, UserCircle, 
-  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Type, Mail, Code, Brain, ListOrdered, User
+  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, 
+  Type, Mail, Code, Brain, ListOrdered, User, LogOut
 } from 'lucide-react';
 
 // Imports des fichiers refactorisés
@@ -13,45 +20,65 @@ import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
 
 const App = () => {
+  // Navigation & UI State
   const [activeTab, setActiveTab] = useState('home'); 
   const [showResult, setShowResult] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   
+  // Auth State
+  const [user, setUser] = useState(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Data State
   const [input, setInput] = useState('');
   const [referenceText, setReferenceText] = useState('');
   const [showRef, setShowRef] = useState(false);
   const [result, setResult] = useState('');
 
+  // Profil & Context personnalisable
   const [context, setContext] = useState({
-    city: "L'Haÿ-les-Roses",
-    role: 'Maire Adjoint (Dév. Éco & Commerces)',
+    city: "Votre Ville",
+    role: "Votre Rôle",
   });
 
   const [details, setDetails] = useState({
     duree: '', cible: '', objectif: '', interlocuteur: '', plateforme: 'LinkedIn', methodeMemo: 'crochets',
   });
 
-  const [user, setUser] = useState(null);
   const [docs, setDocs] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState('');
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
 
+  // 1. Initialisation de l'Authentification et récupération du profil
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (err) {
-        console.error("Erreur d'authentification Firebase:", err);
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+      
+      // Si l'utilisateur est connecté, on charge son profil sauvegardé
+      if (currentUser) {
+        try {
+          const profileRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid, 'profile', 'info');
+          const docSnap = await getDoc(profileRef);
+          if (docSnap.exists()) {
+            setContext(docSnap.data());
+          }
+        } catch (err) {
+          console.error("Erreur récupération profil:", err);
+        }
       }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    });
     return () => unsubscribe();
   }, []);
 
+  // 2. Synchronisation de la Base de Connaissances (Firestore)
   useEffect(() => {
     if (!user) return;
     try {
@@ -67,6 +94,40 @@ const App = () => {
       console.error("Erreur Firestore:", err);
     }
   }, [user]);
+
+  // Fonctions d'authentification
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+      } else {
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      }
+    } catch (err) {
+      setAuthError(isRegistering ? "Erreur lors de la création du compte. Le mot de passe doit faire au moins 6 caractères." : "Email ou mot de passe incorrect.");
+    }
+    setAuthLoading(false);
+  };
+
+  const handleLogout = () => {
+    signOut(auth);
+    setDocs([]);
+    setContext({ city: "Votre Ville", role: "Votre Rôle" });
+  };
+
+  // Sauvegarde automatique du profil utilisateur (Ville, Rôle)
+  const handleContextBlur = async () => {
+    if (!user) return;
+    try {
+      const profileRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'profile', 'info');
+      await setDoc(profileRef, context, { merge: true });
+    } catch (err) {
+      console.error("Erreur de sauvegarde profil:", err);
+    }
+  };
 
   const modules = [
     { id: 'discours', label: 'Discours', sub: 'Élocutions officielles', icon: <PenTool size={24} /> },
@@ -150,10 +211,58 @@ const App = () => {
     setTimeout(() => setCopySuccess(false), 2000);
   };
 
+  // Écran de chargement initial
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#f6fafe] flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-[#0058be]" />
+      </div>
+    );
+  }
+
+  // Module d'inscription et de connexion
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#f6fafe] flex items-center justify-center p-6 font-sans">
+        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-500 border border-slate-100">
+          <div className="flex justify-center mb-6">
+            <div className="bg-[#091426] p-4 rounded-2xl shadow-inner"><Sparkles size={32} className="text-white" /></div>
+          </div>
+          <h1 className="text-4xl font-black text-center text-[#091426] mb-2 uppercase tracking-tighter">Argumentis</h1>
+          <p className="text-center text-slate-500 mb-8 italic serif-text">
+            {isRegistering ? "Créez votre compte pour commencer" : "Connectez-vous à votre espace"}
+          </p>
+
+          <form onSubmit={handleAuth} className="space-y-5">
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 block mb-1">Email</label>
+              <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl px-5 py-4 text-sm font-bold text-slate-700 shadow-inner focus:ring-2 focus:ring-[#0058be]/20 transition-all" placeholder="prenom@exemple.com" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 block mb-1">Mot de passe</label>
+              <input type="password" required value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl px-5 py-4 text-sm font-bold text-slate-700 shadow-inner focus:ring-2 focus:ring-[#0058be]/20 transition-all" placeholder="••••••••" />
+            </div>
+            
+            {authError && <p className="text-red-500 text-xs font-bold text-center bg-red-50 py-2 rounded-lg">{authError}</p>}
+            
+            <button type="submit" disabled={authLoading} className="w-full bg-[#0058be] text-white rounded-xl py-4 font-black uppercase text-sm tracking-widest hover:bg-blue-800 transition-colors mt-6 shadow-lg shadow-blue-500/30 flex justify-center items-center gap-2">
+              {authLoading ? <Loader2 size={18} className="animate-spin" /> : (isRegistering ? 'Créer mon espace' : 'Connexion')}
+            </button>
+          </form>
+
+          <button onClick={() => setIsRegistering(!isRegistering)} className="w-full mt-6 text-xs text-slate-500 font-bold hover:text-[#0058be] transition-colors">
+            {isRegistering ? "Déjà un compte ? Se connecter" : "Pas encore de compte ? S'inscrire"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Application Principale
   return (
     <div className="min-h-screen bg-[#f6fafe] font-sans text-[#171c1f] flex flex-col antialiased">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap)');
         .serif-text { font-family: 'Newsreader', serif; }
         .sans-text { font-family: 'Inter', sans-serif; }
       `}</style>
@@ -172,10 +281,25 @@ const App = () => {
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden lg:flex flex-col items-end border-r border-slate-100 pr-4 text-right">
-             <input className="bg-transparent text-[10px] font-black text-[#0058be] uppercase border-none p-0 focus:ring-0 w-32 text-right" value={context.city} onChange={e => setContext({...context, city: e.target.value})} />
-             <input className="bg-transparent text-[11px] font-bold text-slate-700 border-none p-0 focus:ring-0 w-48 text-right truncate" value={context.role} onChange={e => setContext({...context, role: e.target.value})} />
+             <input 
+               className="bg-transparent text-[10px] font-black text-[#0058be] uppercase border-none p-0 focus:ring-0 w-32 text-right" 
+               value={context.city} 
+               onChange={e => setContext({...context, city: e.target.value})} 
+               onBlur={handleContextBlur}
+             />
+             <input 
+               className="bg-transparent text-[11px] font-bold text-slate-700 border-none p-0 focus:ring-0 w-48 text-right truncate" 
+               value={context.role} 
+               onChange={e => setContext({...context, role: e.target.value})} 
+               onBlur={handleContextBlur}
+             />
           </div>
-          <UserCircle size={28} className="text-slate-300" />
+          <div className="flex items-center gap-3">
+            <UserCircle size={28} className="text-slate-300" />
+            <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors p-1" title="Se déconnecter">
+              <LogOut size={18} />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -296,7 +420,7 @@ const App = () => {
             </section>
             
             <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden">
-              <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('[https://www.transparenttextures.com/patterns/natural-paper.png](https://www.transparenttextures.com/patterns/natural-paper.png)')]"></div>
+              <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]"></div>
               
               <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
                 <div className="sans-text">
