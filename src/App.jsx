@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 // Imports des fichiers refactorisés
-import { auth, db, APP_NAMESPACE, GEMINI_API_KEY } from './config/firebase';
+import { auth, db, APP_NAMESPACE, VITE_GEMINI_API_KEY } from './config/firebase';
 import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
