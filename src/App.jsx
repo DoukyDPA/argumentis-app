@@ -176,7 +176,7 @@ const App = () => {
   // Gestion du chargement initial
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#f6fafe] flex items-center justify-center">
+      <div className="min-h-screen bg-[#e6eef6] flex items-center justify-center">
         <Loader2 className="animate-spin text-[#0058be]" size={40} />
       </div>
     );
@@ -188,7 +188,7 @@ const App = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#f6fafe] font-sans text-[#171c1f] flex flex-col antialiased">
+    <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased">
       <style>{`
         @import url('[https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap)');
         .serif-text { font-family: 'Newsreader', serif; }
@@ -224,7 +224,7 @@ const App = () => {
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <section className="mt-6 mb-12">
               <p className="text-[10px] font-black text-[#0058be] uppercase tracking-[0.3em] mb-3">Tableau de bord</p>
-              <h2 className="serif-text text-4xl font-light text-[#091426] leading-tight">Bonjour,<br/><span className="font-semibold italic text-[#0058be] leading-relaxed">{profile?.firstName || 'vous'}</span></h2>
+              <h2 className="serif-text text-4xl font-light text-[#091426] leading-tight">Bonjour, <span className="font-semibold italic text-[#0058be]">{profile?.firstName || 'vous'}</span></h2>
             </section>
             <section className="grid grid-cols-2 lg:grid-cols-3 gap-5">
               {modules.map((m) => (
