@@ -203,7 +203,8 @@ const App = () => {
               <ArrowLeft size={20} className="text-slate-900" />
             </button>
           ) : (
-            <img src="[https://i.postimg.cc/vHdj0MkZ/Argumentis.png](https://i.postimg.cc/vHdj0MkZ/Argumentis.png)" alt="Argumentis" className="w-8 h-8 rounded-lg shadow-sm object-cover bg-white" />
+            /* Intégration de l'icône de l'application */
+            <img src="https://i.postimg.cc/k4v89QJf/logo_192.png" alt="Argumentis" className="w-8 h-8 rounded-lg shadow-sm object-cover bg-white" />
           )}
           <h1 className="text-xl font-black tracking-tighter text-slate-900 uppercase sans-text">Argumentis</h1>
         </div>
@@ -359,6 +360,7 @@ const App = () => {
             </section>
             
             <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden">
+              {/* Image de fond texturée */}
               <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('[https://www.transparenttextures.com/patterns/natural-paper.png](https://www.transparenttextures.com/patterns/natural-paper.png)')]"></div>
               
               <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
