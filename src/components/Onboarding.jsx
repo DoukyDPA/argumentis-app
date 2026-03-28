@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, User, Building2, MapPin, Loader2 } from 'lucide-react';
+import { ArrowRight, User, Building2, MapPin, Loader2 } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db, APP_NAMESPACE } from '../config/firebase';
 
@@ -13,10 +13,9 @@ export const Onboarding = ({ user, onComplete }) => {
     
     setLoading(true);
     try {
-      // Sauvegarde du profil dans Firestore sous l'ID utilisateur
       const userRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid);
       await setDoc(userRef, { profile: formData }, { merge: true });
-      onComplete(formData); // Passe à l'étape suivante
+      onComplete(formData);
     } catch (err) {
       console.error("Erreur lors de la sauvegarde du profil:", err);
     }
@@ -24,12 +23,15 @@ export const Onboarding = ({ user, onComplete }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6fafe] flex items-center justify-center p-6">
+    <div className="min-h-screen bg-[#e6eef6] flex items-center justify-center p-6">
       <div className="bg-white max-w-md w-full rounded-[2.5rem] p-10 shadow-[0_20px_60px_rgba(9,20,38,0.05)] border border-slate-50 animate-in fade-in slide-in-from-bottom-8">
         
-        <div className="bg-[#091426] w-12 h-12 rounded-xl flex items-center justify-center mb-6 shadow-inner">
-          <Sparkles size={24} className="text-white" />
-        </div>
+        {/* Intégration du Logo Argumentis */}
+        <img 
+          src="https://i.postimg.cc/vHdj0MkZ/Argumentis.png" 
+          alt="Argumentis Logo" 
+          className="w-16 h-16 rounded-2xl mb-6 shadow-sm object-cover bg-white" 
+        />
         
         <h1 className="serif-text text-3xl font-light text-[#091426] leading-tight mb-2">
           Bienvenue sur <span className="font-semibold italic text-[#0058be]">Argumentis</span>
