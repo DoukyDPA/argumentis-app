@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
-import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { 
   PenTool, Loader2, UserCircle, LogOut, Home, Folder, ArrowLeft 
 } from 'lucide-react';
@@ -45,11 +45,13 @@ const App = () => {
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
 
+  // 1. Initialisation : Chargement de l'utilisateur, du profil ET de la mémoire
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         try {
+          // Chargement du profil
           const docRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists() && docSnap.data().profile) {
@@ -57,17 +59,26 @@ const App = () => {
           } else {
              setProfile(null); 
           }
+
+          // Chargement de l'historique de conversation (Mémoire IA)
+          const historyRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid, 'context', 'history');
+          const historySnap = await getDoc(historyRef);
+          if (historySnap.exists() && historySnap.data().messages) {
+            setChatHistory(historySnap.data().messages);
+          }
         } catch (err) {
-          console.error("Erreur lors de la lecture du profil:", err);
+          console.error("Erreur d'initialisation (profil/historique) :", err);
         }
       } else {
          setProfile(null);
+         setChatHistory([]);
       }
       setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
+  // 2. Chargement de la Base de Savoir
   useEffect(() => {
     if (!user || !profile) return;
     try {
@@ -80,9 +91,26 @@ const App = () => {
       });
       return () => unsubscribe();
     } catch (err) {
-      console.error("Erreur Firestore:", err);
+      console.error("Erreur Firestore :", err);
     }
   }, [user, profile]);
+
+  // --- FONCTION CLÉ : Gestion de la mémoire persistante ---
+  const updateAndSaveHistory = async (newHistory) => {
+    // On conserve uniquement les 10 derniers échanges pour ne pas surcharger le contexte
+    const limitedHistory = newHistory.slice(-10);
+    setChatHistory(limitedHistory); 
+    
+    if (user) {
+      try {
+        await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'context', 'history'), {
+          messages: limitedHistory
+        }, { merge: true });
+      } catch (err) {
+        console.error("Erreur de sauvegarde de la mémoire IA :", err);
+      }
+    }
+  };
 
   const handleSaveDoc = async () => {
     if (!user || !newDoc.title || !newDoc.content) return;
@@ -152,6 +180,7 @@ const App = () => {
     return systemPrompt;
   };
 
+  // --- APPEL API SÉCURISÉ VIA LE BACKEND VERCEL ---
   const callGemini = async (historyParams, systemInstruction) => {
     setLoading(true);
     try {
@@ -171,7 +200,9 @@ const App = () => {
       const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
       
       setResult(cleanText);
-      setChatHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
+      // On sauvegarde la réponse de l'IA dans l'historique
+      const finalHistory = [...historyParams, { role: "model", parts: [{ text: cleanText }] }];
+      updateAndSaveHistory(finalHistory);
     } catch (error) {
       setResult(`⚠️ Erreur : ${error.message}\nL'API interne n'a pas pu répondre.`);
     }
@@ -196,9 +227,10 @@ const App = () => {
       default: userQuery = input;
     }
 
-    const initialHistory = [{ role: "user", parts: [{ text: userQuery }] }];
-    setChatHistory(initialHistory);
-    callGemini(initialHistory, systemPrompt);
+    // On injecte la nouvelle requête dans l'historique global
+    const newHistory = [...chatHistory, { role: "user", parts: [{ text: userQuery }] }];
+    updateAndSaveHistory(newHistory);
+    callGemini(newHistory, systemPrompt);
   };
 
   const handleRefine = () => {
@@ -209,8 +241,10 @@ const App = () => {
       parts: [{ text: `CONSIGNE D'AFFINAGE : ${refineInput}. Réponds uniquement avec la nouvelle version du texte mis à jour, prêt à l'emploi, sans blabla d'introduction.` }] 
     };
     
+    // On injecte la consigne d'affinage dans l'historique
     const newHistory = [...chatHistory, newUserMessage];
     setRefineInput('');
+    updateAndSaveHistory(newHistory);
     callGemini(newHistory, systemPrompt);
   };
 
@@ -275,7 +309,6 @@ const App = () => {
               setShowResult(false); 
               if(activeTab !== 'docs' && activeTab !== 'home') {
                 setActiveTab('home');
-                setChatHistory([]);
               } 
             }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full transition-all">
               <ArrowLeft size={20} className="text-slate-900" />
@@ -299,6 +332,14 @@ const App = () => {
             <UserCircle size={28} className="text-[#0058be]" />
           </div>
           
+          {/* Bouton pour forcer le nettoyage de la mémoire manuellement */}
+          <button 
+            onClick={() => { updateAndSaveHistory([]); alert("Mémoire de l'IA réinitialisée !"); }} 
+            className="text-[10px] font-bold text-[#0058be] hover:underline hidden sm:block ml-2"
+          >
+            Vider l'historique
+          </button>
+
           <button onClick={handleSignOut} className="text-slate-400 hover:text-red-500 transition-colors ml-2" title="Se déconnecter">
             <LogOut size={20} />
           </button>
@@ -309,7 +350,12 @@ const App = () => {
       <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 ${showResult ? 'max-w-5xl' : 'max-w-xl md:max-w-3xl'}`}>
         
         {!showResult && activeTab === 'home' && (
-          <Dashboard profile={profile} setActiveTab={setActiveTab} setChatHistory={setChatHistory} setShowLegal={setShowLegal} />
+          <Dashboard 
+            profile={profile} 
+            setActiveTab={setActiveTab} 
+            setChatHistory={setChatHistory} 
+            setShowLegal={setShowLegal} 
+          />
         )}
 
         {!showResult && activeTab !== 'home' && activeTab !== 'docs' && (
@@ -348,9 +394,9 @@ const App = () => {
       {/* BOTTOM NAV */}
       {!showResult && (
         <nav className="fixed bottom-0 left-0 w-full flex justify-around p-4 bg-white/90 backdrop-blur-xl rounded-t-[3rem] shadow-lg border-t border-slate-50 z-[100]">
-          <button onClick={() => { setActiveTab('home'); setInput(''); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
-          <button onClick={() => { setActiveTab('discours'); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
-          <button onClick={() => { setActiveTab('docs'); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
+          <button onClick={() => { setActiveTab('home'); setInput(''); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
+          <button onClick={() => { setActiveTab('discours'); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
+          <button onClick={() => { setActiveTab('docs'); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
         </nav>
       )}
 
