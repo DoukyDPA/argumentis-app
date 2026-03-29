@@ -21,6 +21,7 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  const [showLegal, setShowLegal] = useState(false); // État pour la modale des mentions légales
   
   const [input, setInput] = useState('');
   const [referenceText, setReferenceText] = useState('');
@@ -84,12 +85,12 @@ const App = () => {
   }, [user, profile]);
 
   const modules = [
-    { id: 'discours', label: 'Discours', sub: 'Élocutions officielles', icon: <PenTool size={24} /> },
-    { id: 'langage', label: 'Fiche Langage', sub: 'Persuasion incarnée', icon: <ShieldCheck size={24} /> },
-    { id: 'argumentaire', label: 'Note de Synthèse', sub: 'Aide à la décision factuelle', icon: <MessageSquare size={24} /> },
-    { id: 'mail', label: 'Courriel Personnel', sub: 'Correspondance ciblée', icon: <MailIcon size={24} /> },
-    { id: 'social', label: 'Réseaux Sociaux', sub: 'Storytelling & Engagement', icon: <Share2 size={24} /> },
-    { id: 'memoriser', label: 'Mémoriser', sub: 'Ancrage & Répétition', icon: <Brain size={24} /> },
+    { id: 'discours', label: 'Discours', sub: 'Allocutions officielles', icon: <PenTool size={24} /> },
+    { id: 'langage', label: 'Fiches argumentaires', sub: 'Éléments de langage', icon: <ShieldCheck size={24} /> },
+    { id: 'argumentaire', label: 'Note de synthèse', sub: 'Aide à la décision factuelle', icon: <MessageSquare size={24} /> },
+    { id: 'mail', label: 'Courriel personnel', sub: 'Correspondance ciblée', icon: <MailIcon size={24} /> },
+    { id: 'social', label: 'Réseaux sociaux', sub: 'Storytelling & engagement', icon: <Share2 size={24} /> },
+    { id: 'memoriser', label: 'Mémoriser', sub: 'Astuces mnémotechniques', icon: <Brain size={24} /> },
   ];
 
   const handleSaveDoc = async () => {
@@ -140,7 +141,9 @@ const App = () => {
   const callGemini = async (userQuery, systemInstruction) => {
     setLoading(true);
     try {
-const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        method: 'POST',
+      // Modèle non modifié comme demandé
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: userQuery }] }],
@@ -243,7 +246,7 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
   }
 
   return (
-    <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased">
+    <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased relative">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap');
         .serif-text { font-family: 'Newsreader', serif; }
@@ -291,6 +294,8 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
             <section className="mt-6 mb-12">
               <p className="text-[10px] font-black text-[#0058be] uppercase tracking-[0.3em] mb-3">Tableau de bord</p>
               <h2 className="serif-text text-4xl font-light text-[#091426] leading-tight">Bonjour, <span className="font-semibold italic text-[#0058be]">{profile?.firstName || 'vous'}</span></h2>
+              {/* Ajout du sous-titre */}
+              <p className="text-slate-500 mt-2 font-medium text-lg">Assistant d'argumentation pour les décideurs</p>
             </section>
             <section className="grid grid-cols-2 lg:grid-cols-3 gap-5">
               {modules.map((m) => (
@@ -301,6 +306,13 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
                 </button>
               ))}
             </section>
+
+            {/* Lien des mentions légales */}
+            <div className="mt-16 text-center pb-8">
+              <button onClick={() => setShowLegal(true)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline decoration-slate-200 underline-offset-4">
+                Mentions légales & Politique de confidentialité
+              </button>
+            </div>
           </div>
         )}
 
@@ -312,7 +324,8 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
                 <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#0058be] mb-2">Rédaction Stratégique</p>
                 <h2 className="serif-text text-4xl font-light text-[#091426] italic leading-tight">{modules.find(m => m.id === activeTab)?.label}</h2>
               </div>
-              {activeTab !== 'memoriser' && docs.length > 0 && (
+              {/* Le choix du document est maintenant disponible pour TOUS les modules */}
+              {docs.length > 0 && (
                 <select value={selectedDocId} onChange={e => setSelectedDocId(e.target.value)} className="hidden sm:block bg-white border border-slate-100 text-slate-600 text-xs font-bold rounded-xl px-4 py-2 shadow-sm">
                   <option value="">Aucun document lié</option>
                   {docs.map(d => <option key={d.id} value={d.id}>📘 {d.title}</option>)}
@@ -361,7 +374,6 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
                     <div className="md:col-span-1 space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Interlocuteur</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.interlocuteur} onChange={e => setDetails({...details, interlocuteur: e.target.value})} placeholder="Ex: Préfet, Directeur..." /></div>
                   )}
 
-                  {/* Le champ Objectif & Ton s'affiche maintenant partout sauf pour la mémorisation */}
                   {activeTab !== 'memoriser' && (
                     <div className={`space-y-2 ${activeTab === 'social' ? 'md:col-span-2' : 'md:col-span-1'}`}>
                       <label className="text-[10px] font-black text-slate-500 uppercase px-1">Objectif & Ton</label>
@@ -480,6 +492,24 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
           <button onClick={() => setActiveTab('discours')} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
           <button onClick={() => setActiveTab('docs')} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
         </nav>
+      )}
+
+      {/* MODALE MENTIONS LÉGALES */}
+      {showLegal && (
+        <div className="fixed inset-0 z-[200] bg-[#091426]/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <h2 className="text-2xl font-black text-[#091426] mb-6 serif-text">Mentions Légales</h2>
+            <div className="space-y-4 text-sm text-slate-600 h-64 overflow-y-auto pr-2">
+              <p><strong>Éditeur de l'application :</strong> Argumentis</p>
+              <p><strong>Hébergement :</strong> Firebase (Google LLC), hébergé en Europe.</p>
+              <p><strong>Propriété intellectuelle :</strong> Le contenu généré et la structure de l'application sont protégés par les lois en vigueur sur la propriété intellectuelle.</p>
+              <p><strong>Confidentialité & RGPD :</strong> Vos données de profil et vos documents sont stockés de manière sécurisée et chiffrée. Ils ne sont utilisés que pour la génération de vos textes par l'IA et ne sont pas partagés à des tiers à des fins commerciales. Vous disposez d'un droit d'accès, de modification et de suppression de vos données directement depuis votre espace profil.</p>
+            </div>
+            <button onClick={() => setShowLegal(false)} className="mt-8 w-full bg-[#0058be] text-white font-bold py-4 rounded-2xl hover:bg-blue-800 transition-colors">
+              Fermer
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
