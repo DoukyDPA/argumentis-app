@@ -3,8 +3,8 @@ import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { 
   PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
-  BookOpen, Send, FileText, Target, Info, Clock, Users, UserCircle, 
-  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Type, Mail, Code, Brain, ListOrdered, User, Paperclip
+  BookOpen, Send, Target, Clock, Users, UserCircle, 
+  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail, Code, Brain, ListOrdered, User, Paperclip
 } from 'lucide-react';
 
 // Imports des fichiers refactorisés
@@ -32,6 +32,7 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isEditingProfile, setIsEditingProfile] = useState(false); // Nouvel état pour l'édition du profil
 
   const [docs, setDocs] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState('');
@@ -111,9 +112,8 @@ const App = () => {
   const callGemini = async (userQuery, systemInstruction) => {
     setLoading(true);
     try {
-      const response = await fetch(`const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${VITE_GEMINI_API_KEY}`, {
-
-
+      // Correction de l'URL et utilisation de VITE_GEMINI_API_KEY
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -126,7 +126,7 @@ const App = () => {
       let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
       setResult(text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, ''));
     } catch (error) {
-      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables Vercel.`);
+      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement.`);
     }
     setShowResult(true);
     setLoading(false);
@@ -135,12 +135,22 @@ const App = () => {
   const handleGenerate = () => {
     const activeDoc = docs.find(d => d.id === selectedDocId);
     
-    // Construction dynamique du prompt système grâce au profil
-    let systemPrompt = `Tu es Argumentis, l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
+    // Construction dynamique du prompt système grâce au profil (mise à jour)
+    let systemPrompt = `Tu es Argumentis, la plume et l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
+    
     if (profile?.role || profile?.city) {
-      systemPrompt += `Il exerce en tant que ${profile?.role || 'professionnel'} ${profile?.city ? `à ${profile?.city}` : ''}. Adapte toujours tes réponses à ce contexte précis. `;
+      systemPrompt += `Il exerce la fonction de ${profile?.role || 'professionnel'} ${profile?.city ? `à ${profile?.city}` : ''}. `;
     }
-    systemPrompt += `\nDIRECTIVES :\n- Ton élégant, institutionnel mais accessible.\n- Évite le jargon complexe.`;
+
+    if (profile?.orientation) {
+      systemPrompt += `Sa ligne directrice et sa sensibilité politique/associative sont : ${profile.orientation}. `;
+    }
+
+    systemPrompt += `\nDIRECTIVES STRICTES DE PERSONNIFICATION :
+- Tu dois IMPÉRATIVEMENT adapter le fond (priorités thématiques, arguments) et la forme (ton, champ lexical) pour qu'ils reflètent exactement son rôle et son bord politique ou idéologique. 
+- Incarne cette nuance : un élu de gauche, un maire de droite, ou un dirigeant d'association s'expriment différemment et ne défendent pas les mêmes piliers stratégiques. Tes propositions doivent être calibrées sur MESURE.
+- Le ton doit être institutionnel, élégant mais accessible et tourné vers l'action.
+- Évite le jargon complexe.`;
     
     let userQuery = "";
 
@@ -160,6 +170,7 @@ const App = () => {
 
     if (activeDoc) systemPrompt += `\nCONTEXTE PRIORITAIRE ("${activeDoc.title}") : "${activeDoc.content}"`;
     if (referenceText) systemPrompt += `\n\nMATÉRIAU SOURCE :\n"""\n${referenceText}\n"""\nINSTRUCTION : Prends impérativement en compte ce texte.`;
+    
     callGemini(userQuery, systemPrompt);
   };
 
@@ -184,9 +195,18 @@ const App = () => {
     );
   }
 
-  // Affichage du module d'inscription si aucun profil n'existe
-  if (user && !profile) {
-    return <Onboarding user={user} onComplete={(data) => setProfile(data)} />;
+  // Affichage du module d'inscription ou d'édition du profil
+  if (user && (!profile || isEditingProfile)) {
+    return (
+      <Onboarding 
+        user={user} 
+        initialData={profile}
+        onComplete={(data) => {
+          setProfile(data);
+          setIsEditingProfile(false);
+        }} 
+      />
+    );
   }
 
   return (
@@ -205,17 +225,22 @@ const App = () => {
               <ArrowLeft size={20} className="text-slate-900" />
             </button>
           ) : (
-            /* Intégration de l'icône de l'application */
             <img src="https://i.postimg.cc/k4v89QJf/logo_192.png" alt="Argumentis" className="w-8 h-8 rounded-lg shadow-sm object-cover bg-white" />
           )}
           <h1 className="text-xl font-black tracking-tighter text-slate-900 uppercase sans-text">Argumentis</h1>
         </div>
-        <div className="flex items-center gap-4">
+        
+        {/* Zone de profil cliquable pour l'édition */}
+        <div 
+          className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" 
+          onClick={() => setIsEditingProfile(true)}
+          title="Modifier mon profil"
+        >
           <div className="hidden lg:flex flex-col items-end border-r border-slate-100 pr-4 text-right">
              <span className="text-[10px] font-black text-[#0058be] uppercase">{profile?.city || 'Espace Privé'}</span>
              <span className="text-[11px] font-bold text-slate-700 truncate max-w-[12rem]">{profile?.role || 'Utilisateur'}</span>
           </div>
-          <UserCircle size={28} className="text-slate-300" />
+          <UserCircle size={28} className="text-[#0058be]" />
         </div>
       </header>
 
@@ -363,7 +388,7 @@ const App = () => {
             
             <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden">
               {/* Image de fond texturée */}
-              <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('[https://www.transparenttextures.com/patterns/natural-paper.png](https://www.transparenttextures.com/patterns/natural-paper.png)')]"></div>
+              <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]"></div>
               
               <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
                 <div className="sans-text">
