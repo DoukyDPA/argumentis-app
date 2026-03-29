@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, signOut } from 'firebase/auth'; // On retire signInAnonymously et on ajoute signOut
+import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { 
   PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
-  BookOpen, Send, Target, Clock, Users, UserCircle, LogOut,
+  BookOpen, Send, Target, Clock, Users, UserCircle, LogOut, Upload,
   Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
 } from 'lucide-react';
 
@@ -12,7 +12,8 @@ import { auth, db, APP_NAMESPACE, VITE_GEMINI_API_KEY } from './config/firebase'
 import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
-import { Auth } from './components/Auth'; // Import du nouveau composant
+import { Auth } from './components/Auth'; 
+import { extractTextFromPdf } from './utils/pdfHelper'; // Outil d'extraction PDF
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('home'); 
@@ -24,6 +25,7 @@ const App = () => {
   const [input, setInput] = useState('');
   const [referenceText, setReferenceText] = useState('');
   const [showRef, setShowRef] = useState(false);
+  const [isReadingPdf, setIsReadingPdf] = useState(false); // État de chargement du PDF
   const [result, setResult] = useState('');
 
   const [details, setDetails] = useState({
@@ -42,7 +44,6 @@ const App = () => {
 
   // Authentification et récupération du profil
   useEffect(() => {
-    // Plus de connexion anonyme ici ! On écoute juste l'état de l'utilisateur.
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -52,7 +53,7 @@ const App = () => {
           if (docSnap.exists() && docSnap.data().profile) {
             setProfile(docSnap.data().profile);
           } else {
-             setProfile(null); // Si aucun profil, on force le passage par l'onboarding
+             setProfile(null); 
           }
         } catch (err) {
           console.error("Erreur lors de la lecture du profil:", err);
@@ -106,10 +107,41 @@ const App = () => {
     setSelectedDocId(prev => prev === docId ? '' : prev);
   };
 
+  const handleRefFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("⚠️ Le fichier est trop volumineux (limite : 5 Mo).");
+      return;
+    }
+    
+    setIsReadingPdf(true);
+    try {
+      let extractedText = '';
+      if (file.type === 'application/pdf') {
+        extractedText = await extractTextFromPdf(file);
+      } else {
+        extractedText = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.onerror = (error) => reject(error);
+          reader.readAsText(file);
+        });
+      }
+      setReferenceText(prev => prev ? prev + "\n\n" + extractedText : extractedText);
+    } catch (error) {
+      alert("Erreur lors de la lecture du fichier.");
+    } finally {
+      setIsReadingPdf(false);
+      e.target.value = null;
+    }
+  };
+
   const callGemini = async (userQuery, systemInstruction) => {
     setLoading(true);
     try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        method: 'POST',
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: userQuery }] }],
@@ -186,7 +218,6 @@ const App = () => {
     }
   };
 
-  // 1. Écran de chargement initial
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#e6eef6] flex items-center justify-center">
@@ -195,12 +226,10 @@ const App = () => {
     );
   }
 
-  // 2. Utilisateur non connecté -> Affichage de l'écran d'Auth
   if (!user) {
     return <Auth />;
   }
 
-  // 3. Utilisateur connecté mais sans profil (ou en mode édition) -> Affichage du paramétrage
   if (user && (!profile || isEditingProfile)) {
     return (
       <Onboarding 
@@ -214,7 +243,6 @@ const App = () => {
     );
   }
 
-  // 4. Interface principale
   return (
     <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased">
       <style>{`
@@ -237,7 +265,6 @@ const App = () => {
         </div>
         
         <div className="flex items-center gap-4">
-          {/* Zone de profil cliquable */}
           <div 
             className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" 
             onClick={() => setIsEditingProfile(true)}
@@ -250,7 +277,6 @@ const App = () => {
             <UserCircle size={28} className="text-[#0058be]" />
           </div>
           
-          {/* Bouton de déconnexion */}
           <button onClick={handleSignOut} className="text-slate-400 hover:text-red-500 transition-colors ml-2" title="Se déconnecter">
             <LogOut size={20} />
           </button>
@@ -301,8 +327,8 @@ const App = () => {
                   
                   {activeTab === 'discours' && (
                     <>
-                      <div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Durée cible</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.duree} onChange={e => setDetails({...details, duree: e.target.value})} /></div>
-                      <div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Auditoire</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.cible} onChange={e => setDetails({...details, cible: e.target.value})} /></div>
+                      <div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Durée cible</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.duree} onChange={e => setDetails({...details, duree: e.target.value})} placeholder="Ex: 5 minutes" /></div>
+                      <div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Auditoire</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.cible} onChange={e => setDetails({...details, cible: e.target.value})} placeholder="Ex: Citoyens, Partenaires..." /></div>
                     </>
                   )}
 
@@ -333,17 +359,22 @@ const App = () => {
                   )}
 
                   {(activeTab === 'argumentaire' || activeTab === 'mail') && (
-                    <div className="md:col-span-1 space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Interlocuteur</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.interlocuteur} onChange={e => setDetails({...details, interlocuteur: e.target.value})} /></div>
+                    <div className="md:col-span-1 space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Interlocuteur</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.interlocuteur} onChange={e => setDetails({...details, interlocuteur: e.target.value})} placeholder="Ex: Préfet, Directeur..." /></div>
                   )}
-                  {(activeTab !== 'social' && activeTab !== 'memoriser') && (
-                    <div className="md:col-span-1 space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Objectif & Ton</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.objectif} onChange={e => setDetails({...details, objectif: e.target.value})} /></div>
+
+                  {/* Le champ Objectif & Ton s'affiche maintenant partout sauf pour la mémorisation */}
+                  {activeTab !== 'memoriser' && (
+                    <div className={`space-y-2 ${activeTab === 'social' ? 'md:col-span-2' : 'md:col-span-1'}`}>
+                      <label className="text-[10px] font-black text-slate-500 uppercase px-1">Objectif & Ton</label>
+                      <input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.objectif} onChange={e => setDetails({...details, objectif: e.target.value})} placeholder="Ex: Convaincre, Informer, Fédérer..." />
+                    </div>
                   )}
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="bg-white rounded-[2.5rem] p-10 shadow-[0_20px_60px_rgba(9,20,38,0.05)] relative overflow-hidden">
-                  <textarea className="w-full bg-transparent border-none p-0 focus:ring-0 text-xl serif-text italic resize-none min-h-[250px]" placeholder="Texte source ou message principal..." value={input} onChange={(e) => setInput(e.target.value)} />
+                  <textarea className="w-full bg-transparent border-none p-0 focus:ring-0 text-xl serif-text italic resize-none min-h-[250px]" placeholder="Texte source, notes en vrac ou message principal..." value={input} onChange={(e) => setInput(e.target.value)} />
                 </div>
               </div>
               
@@ -358,13 +389,21 @@ const App = () => {
 
                 {showRef && (
                   <div className="bg-[#f0f4f8] rounded-[2.5rem] p-8 shadow-inner border border-slate-100 animate-in fade-in slide-in-from-top-2">
-                     <div className="flex items-center gap-3 mb-4">
-                        <BookOpen size={18} className="text-[#0058be]" />
-                        <h3 className="text-xs font-black text-[#091426] uppercase tracking-widest">Matériau Source</h3>
+                     <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-3">
+                          <BookOpen size={18} className="text-[#0058be]" />
+                          <h3 className="text-xs font-black text-[#091426] uppercase tracking-widest">Matériau Source</h3>
+                        </div>
+                        
+                        <label className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${isReadingPdf ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'text-[#0058be] bg-blue-50 hover:bg-blue-100 border-blue-100'}`}>
+                          {isReadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} 
+                          {isReadingPdf ? 'Lecture...' : 'Importer (PDF, TXT)'}
+                          <input type="file" accept=".pdf,.txt,.md,.csv" className="hidden" onChange={handleRefFileUpload} disabled={isReadingPdf} />
+                        </label>
                      </div>
                      <textarea 
                         className="w-full bg-transparent border-none p-0 focus:ring-0 text-base sans-text font-medium leading-relaxed resize-y text-slate-700 min-h-[120px] placeholder:text-slate-400" 
-                        placeholder="Collez ici un discours précédent pour en imiter le style, des notes de cadrage, ou un document brut pour donner du contexte précis à l'IA..."
+                        placeholder="Collez ici un discours précédent pour en imiter le style, ou importez un fichier..."
                         value={referenceText}
                         onChange={(e) => setReferenceText(e.target.value)}
                      />

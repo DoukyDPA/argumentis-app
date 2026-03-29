@@ -1,7 +1,52 @@
-import React from 'react';
-import { BookOpen, Plus, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { BookOpen, Plus, Trash2, Upload, Loader2 } from 'lucide-react';
+import { extractTextFromPdf } from '../utils/pdfHelper'; // On importe notre nouvel outil
 
 export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNewDoc, handleSaveDoc, handleDeleteDoc }) => {
+  const [isReading, setIsReading] = useState(false); // État pour afficher un chargement pendant la lecture du PDF
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // On monte la limite à 5 Mo pour les PDF
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      alert("⚠️ Le fichier est trop volumineux (limite : 5 Mo).");
+      return;
+    }
+
+    setIsReading(true);
+
+    try {
+      let extractedText = '';
+      
+      // Si c'est un PDF, on utilise notre outil
+      if (file.type === 'application/pdf') {
+        extractedText = await extractTextFromPdf(file);
+      } 
+      // Sinon, on lit le texte normalement
+      else {
+        extractedText = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.onerror = (error) => reject(error);
+          reader.readAsText(file);
+        });
+      }
+
+      setNewDoc({ 
+        ...newDoc, 
+        content: extractedText,
+        title: newDoc.title || file.name.split('.')[0] 
+      });
+    } catch (error) {
+      alert("Erreur lors de la lecture du fichier.");
+    } finally {
+      setIsReading(false);
+      e.target.value = null; // Réinitialise l'input
+    }
+  };
+
   return (
     <div className="animate-in fade-in duration-500 pb-20">
       <div className="flex items-center justify-between mb-10 px-2">
@@ -17,6 +62,16 @@ export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNe
       {isAddingDoc && (
         <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl mb-8 animate-in slide-in-from-top-4">
           <h3 className="text-lg font-bold mb-4 text-[#091426] serif-text">Ajouter un document de référence</h3>
+          
+          <div className="mb-6 flex items-center gap-4">
+            <label className={`flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer transition-colors text-sm font-bold border ${isReading ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-blue-50 text-[#0058be] hover:bg-blue-100 border-blue-100'}`}>
+              {isReading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              {isReading ? 'Lecture du document...' : 'Importer un fichier (PDF, TXT, MD)'}
+              <input type="file" accept=".pdf,.txt,.md,.csv" className="hidden" onChange={handleFileUpload} disabled={isReading} />
+            </label>
+            <span className="text-xs text-slate-400 font-medium">Max 5 Mo</span>
+          </div>
+
           <div className="space-y-4">
             <input 
               type="text" 
@@ -35,14 +90,14 @@ export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNe
               <option value="Contexte">Contexte</option>
             </select>
             <textarea 
-              placeholder="Collez ici le contenu de votre document..." 
+              placeholder="Ou collez ici le contenu de votre document..." 
               value={newDoc.content}
               onChange={e => setNewDoc({...newDoc, content: e.target.value})}
               className="w-full h-32 bg-slate-50 border-none rounded-xl px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-[#0058be]/20 resize-none"
             />
             <button 
               onClick={handleSaveDoc}
-              disabled={!newDoc.title || !newDoc.content}
+              disabled={!newDoc.title || !newDoc.content || isReading}
               className="w-full bg-[#0058be] text-white font-bold py-3 rounded-xl hover:bg-blue-800 disabled:opacity-50 transition-colors"
             >
               Sauvegarder dans ma base
@@ -51,6 +106,7 @@ export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNe
         </div>
       )}
 
+      {/* Reste du code d'affichage des documents inchangé... */}
       {docs.length === 0 ? (
         <div className="text-center p-12 bg-white rounded-3xl border border-dashed border-slate-200">
           <BookOpen size={48} className="mx-auto text-slate-200 mb-4" />
