@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
-// ALIAS : on renomme 'doc' en 'firestoreDoc' pour éviter le conflit avec les variables locales
 import { collection, onSnapshot, addDoc, deleteDoc, doc as firestoreDoc, getDoc } from 'firebase/firestore';
 import { 
   PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
-  BookOpen, Send, Target, UserCircle, LogOut, Upload,
-  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User as UserIcon, Paperclip
+  BookOpen, Send, Target, Clock, Users, UserCircle, LogOut, Upload,
+  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
 } from 'lucide-react';
 
 import { auth, db, APP_NAMESPACE, VITE_GEMINI_API_KEY } from './config/firebase';
@@ -29,7 +28,6 @@ const App = () => {
   const [isReadingPdf, setIsReadingPdf] = useState(false);
   const [result, setResult] = useState('');
 
-  // États pour la mémorisation
   const [chatHistory, setChatHistory] = useState([]);
   const [refineInput, setRefineInput] = useState('');
 
@@ -37,7 +35,8 @@ const App = () => {
     duree: '', cible: '', objectif: '', interlocuteur: '', plateforme: 'LinkedIn', methodeMemo: 'crochets',
   });
 
-  const [user, setUser] = useState(null);
+  // Rollup fix : renommage strict pour éviter tout conflit avec "User" (Lucide)
+  const [sessionUser, setSessionUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isEditingProfile, setIsEditingProfile] = useState(false); 
@@ -49,19 +48,18 @@ const App = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
+      setSessionUser(currentUser);
       if (currentUser) {
         try {
-          // Utilisation du nouvel alias firestoreDoc
-          const docRef = firestoreDoc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists() && docSnap.data().profile) {
-            setProfile(docSnap.data().profile);
+          const profileRef = firestoreDoc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
+          const profileSnap = await getDoc(profileRef);
+          if (profileSnap.exists() && profileSnap.data().profile) {
+            setProfile(profileSnap.data().profile);
           } else {
              setProfile(null); 
           }
-        } catch (err) {
-          console.error("Erreur lors de la lecture du profil:", err);
+        } catch (authErr) {
+          console.error("Erreur lecture profil:", authErr);
         }
       } else {
          setProfile(null);
@@ -72,28 +70,26 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    if (!user || !profile) return;
+    if (!sessionUser || !profile) return;
     
-    // CORRECTIF BUILD : déclaration de la variable hors du bloc try pour ne pas perturber Rollup
-    let unsubscribe; 
+    let unsubscribeDocs; 
     
     try {
-      const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
-      unsubscribe = onSnapshot(docsRef, (snapshot) => {
-        // Utilisation de docItem pour éviter le shadowing
-        const fetchedDocs = snapshot.docs.map(docItem => ({ id: docItem.id, ...docItem.data() }));
+      const docsCollectionRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents');
+      unsubscribeDocs = onSnapshot(docsCollectionRef, (snapshot) => {
+        const fetchedDocs = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
         fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setDocs(fetchedDocs);
         setSelectedDocId(prev => (fetchedDocs.length > 0 && !prev) ? fetchedDocs[0].id : prev);
       });
-    } catch (err) {
-      console.error("Erreur Firestore:", err);
+    } catch (dbErr) {
+      console.error("Erreur Firestore:", dbErr);
     }
     
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (unsubscribeDocs) unsubscribeDocs();
     };
-  }, [user, profile]);
+  }, [sessionUser, profile]);
 
   const modules = [
     { id: 'discours', label: 'Discours', sub: 'Allocutions officielles', icon: <PenTool size={24} /> },
@@ -104,19 +100,27 @@ const App = () => {
     { id: 'memoriser', label: 'Mémoriser', sub: 'Astuces mnémotechniques', icon: <Brain size={24} /> },
   ];
 
+  // Extraction des tableaux pour soulager le parser JSX de Vite/Rollup
+  const socialPlatforms = ['LinkedIn', 'X', 'Facebook', 'Instagram'];
+  const memoTechniques = [
+    { id: 'crochets', label: 'Crochets', icon: <ListOrdered size={20} /> },
+    { id: 'corps', label: 'Loci Corporel', icon: <User size={20} /> },
+    { id: 'balises', label: 'Balises', icon: <Target size={20} /> }
+  ];
+
   const handleSaveDoc = async () => {
-    if (!user || !newDoc.title || !newDoc.content) return;
-    await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents'), {
+    if (!sessionUser || !newDoc.title || !newDoc.content) return;
+    await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents'), {
       ...newDoc, createdAt: Date.now()
     });
     setIsAddingDoc(false);
     setNewDoc({ title: '', category: 'Référence', content: '' });
   };
 
-  const handleDeleteDoc = async (docId) => {
-    if (!user) return;
-    await deleteDoc(firestoreDoc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', docId));
-    setSelectedDocId(prev => prev === docId ? '' : prev);
+  const handleDeleteDoc = async (idToDelete) => {
+    if (!sessionUser) return;
+    await deleteDoc(firestoreDoc(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents', idToDelete));
+    setSelectedDocId(prev => prev === idToDelete ? '' : prev);
   };
 
   const handleRefFileUpload = async (e) => {
@@ -136,12 +140,12 @@ const App = () => {
         extractedText = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (event) => resolve(event.target.result);
-          reader.onerror = (error) => reject(error);
+          reader.onerror = (readErr) => reject(readErr);
           reader.readAsText(file);
         });
       }
       setReferenceText(prev => prev ? prev + "\n\n" + extractedText : extractedText);
-    } catch (error) {
+    } catch (fileErr) {
       alert("Erreur lors de la lecture du fichier.");
     } finally {
       setIsReadingPdf(false);
@@ -190,8 +194,8 @@ const App = () => {
       
       setResult(cleanText);
       setChatHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
-    } catch (error) {
-      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement et votre clé API.`);
+    } catch (apiErr) {
+      setResult(`⚠️ Erreur : ${apiErr.message}\nVérifiez vos variables d'environnement et votre clé API.`);
     }
     setShowResult(true);
     setLoading(false);
@@ -248,8 +252,8 @@ const App = () => {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-    } catch (error) {
-      console.error("Erreur lors de la déconnexion", error);
+    } catch (signOutErr) {
+      console.error("Erreur lors de la déconnexion", signOutErr);
     }
   };
 
@@ -261,14 +265,14 @@ const App = () => {
     );
   }
 
-  if (!user) {
+  if (!sessionUser) {
     return <Auth />;
   }
 
-  if (user && (!profile || isEditingProfile)) {
+  if (sessionUser && (!profile || isEditingProfile)) {
     return (
       <Onboarding 
-        user={user} 
+        user={sessionUser} 
         initialData={profile}
         onComplete={(data) => {
           setProfile(data);
@@ -385,7 +389,7 @@ const App = () => {
                     <div className="md:col-span-2 space-y-4">
                       <label className="text-[10px] font-black text-slate-500 uppercase px-1 text-center block">Plateforme</label>
                       <div className="flex gap-2">
-                        {['LinkedIn', 'X', 'Facebook', 'Instagram'].map(plat => (
+                        {socialPlatforms.map(plat => (
                           <button key={plat} onClick={() => setDetails({...details, plateforme: plat})} className={`flex-1 p-4 rounded-2xl border flex flex-col items-center ${details.plateforme === plat ? 'bg-[#091426] text-white shadow-lg' : 'bg-white text-slate-400'}`}>
                             {plat === 'LinkedIn' && <Linkedin size={20} />} {plat === 'X' && <Twitter size={20} />} {plat === 'Facebook' && <Facebook size={20} />} {plat === 'Instagram' && <Instagram size={20} />}
                           </button>
@@ -398,7 +402,7 @@ const App = () => {
                     <div className="md:col-span-2 space-y-4">
                       <label className="text-[10px] font-black text-slate-500 uppercase px-1 text-center block">Technique d'ancrage</label>
                       <div className="flex gap-2">
-                        {[ { id: 'crochets', label: 'Crochets', icon: <ListOrdered size={20} /> }, { id: 'corps', label: 'Loci Corporel', icon: <UserIcon size={20} /> }, { id: 'balises', label: 'Balises', icon: <Target size={20} /> } ].map(tech => (
+                        {memoTechniques.map(tech => (
                           <button key={tech.id} onClick={() => setDetails({...details, methodeMemo: tech.id})} className={`flex-1 flex flex-col items-center p-4 rounded-2xl ${details.methodeMemo === tech.id ? 'bg-[#091426] text-white' : 'bg-white text-slate-400'}`}>
                             {tech.icon} <span className="text-[9px] font-black uppercase mt-2">{tech.label}</span>
                           </button>
