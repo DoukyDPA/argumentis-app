@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, signOut } from 'firebase/auth'; 
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, deleteDoc, doc as firestoreDoc, getDoc } from 'firebase/firestore';
 import { Home, Folder, ArrowLeft, UserCircle, LogOut, Loader2 } from 'lucide-react';
 
 import { auth, db, APP_NAMESPACE } from './config/firebase';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
-import { Auth } from './components/Auth'; 
+import { Auth } from './components/Auth';
 import { Dashboard } from './components/Dashboard';
 import { Generator } from './components/Generator';
 
 const App = () => {
-  const [activeTab, setActiveTab] = useState('home'); 
+  const [activeTab, setActiveTab] = useState('home');
   const [showLegal, setShowLegal] = useState(false);
   
   const [sessionUser, setSessionUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [isEditingProfile, setIsEditingProfile] = useState(false); 
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
   const [docs, setDocs] = useState([]);
   const [isAddingDoc, setIsAddingDoc] = useState(false);
@@ -34,7 +34,7 @@ const App = () => {
           if (profileSnap.exists() && profileSnap.data().profile) {
             setProfile(profileSnap.data().profile);
           } else {
-             setProfile(null); 
+             setProfile(null);
           }
         } catch (err) { console.error(err); }
       } else {
