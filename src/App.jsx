@@ -2,16 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { 
-  PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
-  BookOpen, Send, Target, Clock, Users, UserCircle, LogOut, Upload,
-  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
+  PenTool, Loader2, UserCircle, LogOut, Home, Folder, ArrowLeft 
 } from 'lucide-react';
 
 import { auth, db, APP_NAMESPACE } from './config/firebase';
-import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
 import { Auth } from './components/Auth'; 
+import { Dashboard } from './components/Dashboard';
+import { ResultView } from './components/ResultView';
+import { GenerationForm } from './components/GenerationForm';
 import { extractTextFromPdf } from './utils/pdfHelper'; 
 
 const App = () => {
@@ -73,7 +73,6 @@ const App = () => {
     try {
       const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
       const unsubscribe = onSnapshot(docsRef, (snapshot) => {
-        // Renommage ici pour éviter le conflit avec l'import `doc` de Firebase
         const fetchedDocs = snapshot.docs.map(dItem => ({ id: dItem.id, ...dItem.data() }));
         fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setDocs(fetchedDocs);
@@ -84,15 +83,6 @@ const App = () => {
       console.error("Erreur Firestore:", err);
     }
   }, [user, profile]);
-
-  const modules = [
-    { id: 'discours', label: 'Discours', sub: 'Allocutions officielles', icon: <PenTool size={24} /> },
-    { id: 'langage', label: 'Fiches argumentaires', sub: 'Éléments de langage', icon: <ShieldCheck size={24} /> },
-    { id: 'argumentaire', label: 'Note de synthèse', sub: 'Aide à la décision factuelle', icon: <MessageSquare size={24} /> },
-    { id: 'mail', label: 'Courriel personnel', sub: 'Correspondance ciblée', icon: <MailIcon size={24} /> },
-    { id: 'social', label: 'Réseaux sociaux', sub: 'Storytelling & engagement', icon: <Share2 size={24} /> },
-    { id: 'memoriser', label: 'Mémoriser', sub: 'Astuces mnémotechniques', icon: <Brain size={24} /> },
-  ];
 
   const handleSaveDoc = async () => {
     if (!user || !newDoc.title || !newDoc.content) return;
@@ -165,7 +155,6 @@ const App = () => {
   const callGemini = async (historyParams, systemInstruction) => {
     setLoading(true);
     try {
-      // Au lieu d'appeler Google directement, on appelle NOTRE nouveau serveur Vercel
       const response = await fetch('/api/gemini', {        
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -184,7 +173,7 @@ const App = () => {
       setResult(cleanText);
       setChatHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
     } catch (error) {
-      setResult(`⚠️ Erreur : ${error.message}`);
+      setResult(`⚠️ Erreur : ${error.message}\nL'API interne n'a pas pu répondre.`);
     }
     setShowResult(true);
     setLoading(false);
@@ -319,220 +308,38 @@ const App = () => {
       {/* MAIN CONTENT */}
       <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 ${showResult ? 'max-w-5xl' : 'max-w-xl md:max-w-3xl'}`}>
         
-        {/* DASHBOARD */}
         {!showResult && activeTab === 'home' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <section className="mt-6 mb-12">
-              <p className="text-[10px] font-black text-[#0058be] uppercase tracking-[0.3em] mb-3">Tableau de bord</p>
-              <h2 className="serif-text text-4xl font-light text-[#091426] leading-tight">Bonjour, <span className="font-semibold italic text-[#0058be]">{profile?.firstName || 'vous'}</span></h2>
-              <p className="text-slate-500 mt-2 font-medium text-lg">Assistant d'argumentation pour les décideurs</p>
-            </section>
-            <section className="grid grid-cols-2 lg:grid-cols-3 gap-5">
-              {modules.map((m) => (
-                <button key={m.id} onClick={() => { setActiveTab(m.id); setChatHistory([]); }} className="flex flex-col items-start p-6 bg-white rounded-3xl transition-all active:scale-95 shadow-[0_4px_25px_rgba(0,0,0,0.03)] border border-slate-50 text-left hover:border-blue-100 hover:shadow-xl">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mb-4"><span className="text-[#091426]">{m.icon}</span></div>
-                  <span className="font-bold text-[#091426] text-sm tracking-tight leading-none">{m.label}</span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase mt-2 leading-tight">{m.sub}</span>
-                </button>
-              ))}
-            </section>
-
-            <div className="mt-16 text-center pb-8">
-              <button onClick={() => setShowLegal(true)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline decoration-slate-200 underline-offset-4">
-                Mentions légales &amp; Politique de confidentialité
-              </button>
-            </div>
-          </div>
+          <Dashboard profile={profile} setActiveTab={setActiveTab} setChatHistory={setChatHistory} setShowLegal={setShowLegal} />
         )}
 
-        {/* FORMS */}
         {!showResult && activeTab !== 'home' && activeTab !== 'docs' && (
-          <div className="animate-in fade-in slide-in-from-right-10 duration-500">
-            <header className="mb-10 flex justify-between items-end">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#0058be] mb-2">Rédaction Stratégique</p>
-                <h2 className="serif-text text-4xl font-light text-[#091426] italic leading-tight">{modules.find(m => m.id === activeTab)?.label}</h2>
-              </div>
-              {docs.length > 0 && (
-                <select value={selectedDocId} onChange={e => setSelectedDocId(e.target.value)} className="hidden sm:block bg-white border border-slate-100 text-slate-600 text-xs font-bold rounded-xl px-4 py-2 shadow-sm">
-                  <option value="">Aucun document lié</option>
-                  {docs.map(d => <option key={d.id} value={d.id}>📘 {d.title}</option>)}
-                </select>
-              )}
-            </header>
-
-            <section className="space-y-8">
-              <div className="bg-[#f0f4f8] rounded-[2.5rem] p-8 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  
-                  {activeTab === 'discours' && (
-                    <>
-                      <div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Durée cible</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.duree} onChange={e => setDetails({...details, duree: e.target.value})} placeholder="Ex: 5 minutes" /></div>
-                      <div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Auditoire</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.cible} onChange={e => setDetails({...details, cible: e.target.value})} placeholder="Ex: Citoyens, Partenaires..." /></div>
-                    </>
-                  )}
-
-                  {activeTab === 'social' && (
-                    <div className="md:col-span-2 space-y-4">
-                      <label className="text-[10px] font-black text-slate-500 uppercase px-1 text-center block">Plateforme</label>
-                      <div className="flex gap-2">
-                        {['LinkedIn', 'X', 'Facebook', 'Instagram'].map(plat => (
-                          <button key={plat} onClick={() => setDetails({...details, plateforme: plat})} className={`flex-1 p-4 rounded-2xl border flex flex-col items-center ${details.plateforme === plat ? 'bg-[#091426] text-white shadow-lg' : 'bg-white text-slate-400'}`}>
-                            {plat === 'LinkedIn' && <Linkedin size={20} />} {plat === 'X' && <Twitter size={20} />} {plat === 'Facebook' && <Facebook size={20} />} {plat === 'Instagram' && <Instagram size={20} />}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'memoriser' && (
-                    <div className="md:col-span-2 space-y-4">
-                      <label className="text-[10px] font-black text-slate-500 uppercase px-1 text-center block">Technique d'ancrage</label>
-                      <div className="flex gap-2">
-                        {[ { id: 'crochets', label: 'Crochets', icon: <ListOrdered size={20} /> }, { id: 'corps', label: 'Loci Corporel', icon: <User size={20} /> }, { id: 'balises', label: 'Balises', icon: <Target size={20} /> } ].map(tech => (
-                          <button key={tech.id} onClick={() => setDetails({...details, methodeMemo: tech.id})} className={`flex-1 flex flex-col items-center p-4 rounded-2xl ${details.methodeMemo === tech.id ? 'bg-[#091426] text-white' : 'bg-white text-slate-400'}`}>
-                            {tech.icon} <span className="text-[9px] font-black uppercase mt-2">{tech.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(activeTab === 'argumentaire' || activeTab === 'mail') && (
-                    <div className="md:col-span-1 space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Interlocuteur</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.interlocuteur} onChange={e => setDetails({...details, interlocuteur: e.target.value})} placeholder="Ex: Préfet, Directeur..." /></div>
-                  )}
-
-                  {activeTab !== 'memoriser' && (
-                    <div className={`space-y-2 ${activeTab === 'social' ? 'md:col-span-2' : 'md:col-span-1'}`}>
-                      <label className="text-[10px] font-black text-slate-500 uppercase px-1">Objectif & Ton</label>
-                      <input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.objectif} onChange={e => setDetails({...details, objectif: e.target.value})} placeholder="Ex: Convaincre, Informer, Fédérer..." />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="bg-white rounded-[2.5rem] p-10 shadow-[0_20px_60px_rgba(9,20,38,0.05)] relative overflow-hidden">
-                  <textarea className="w-full bg-transparent border-none p-0 focus:ring-0 text-xl serif-text italic resize-none min-h-[250px]" placeholder="Texte source, notes en vrac ou message principal..." value={input} onChange={(e) => setInput(e.target.value)} />
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                <button 
-                  onClick={() => setShowRef(!showRef)}
-                  className="flex items-center gap-2 text-sm font-bold text-[#0058be] hover:text-blue-800 transition-colors"
-                >
-                  <Paperclip size={18} />
-                  {showRef ? 'Masquer le texte de référence' : 'Joindre un texte de référence (Modèle, Contexte...)'}
-                </button>
-
-                {showRef && (
-                  <div className="bg-[#f0f4f8] rounded-[2.5rem] p-8 shadow-inner border border-slate-100 animate-in fade-in slide-in-from-top-2">
-                     <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-3">
-                          <BookOpen size={18} className="text-[#0058be]" />
-                          <h3 className="text-xs font-black text-[#091426] uppercase tracking-widest">Matériau Source</h3>
-                        </div>
-                        
-                        <label className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${isReadingPdf ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'text-[#0058be] bg-blue-50 hover:bg-blue-100 border-blue-100'}`}>
-                          {isReadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} 
-                          {isReadingPdf ? 'Lecture...' : 'Importer (PDF, TXT)'}
-                          <input type="file" accept=".pdf,.txt,.md,.csv" className="hidden" onChange={handleRefFileUpload} disabled={isReadingPdf} />
-                        </label>
-                     </div>
-                     <textarea 
-                        className="w-full bg-transparent border-none p-0 focus:ring-0 text-base sans-text font-medium leading-relaxed resize-y text-slate-700 min-h-[120px] placeholder:text-slate-400" 
-                        placeholder="Collez ici un discours précédent pour en imiter le style, ou importez un fichier..."
-                        value={referenceText}
-                        onChange={(e) => setReferenceText(e.target.value)}
-                     />
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <div className="mt-12 mb-20">
-              <button onClick={handleGenerate} disabled={loading || !input} className="w-full bg-[#0058be] text-white rounded-full py-5 px-8 flex items-center justify-center gap-4 hover:scale-[1.02] disabled:opacity-30">
-                {loading ? <Loader2 className="animate-spin" size={24} /> : <Send size={24} />}
-                <span className="font-black tracking-widest uppercase text-sm">Lancer l'assistant IA</span>
-              </button>
-            </div>
-          </div>
+          <GenerationForm
+            activeTab={activeTab}
+            docs={docs}
+            selectedDocId={selectedDocId}
+            setSelectedDocId={setSelectedDocId}
+            details={details}
+            setDetails={setDetails}
+            input={input}
+            setInput={setInput}
+            showRef={showRef}
+            setShowRef={setShowRef}
+            isReadingPdf={isReadingPdf}
+            handleRefFileUpload={handleRefFileUpload}
+            referenceText={referenceText}
+            setReferenceText={setReferenceText}
+            handleGenerate={handleGenerate}
+            loading={loading}
+          />
         )}
 
-        {/* RESULTS */}
         {showResult && (
-          <div className="animate-in fade-in pb-20">
-            <section className="bg-[#091426] rounded-[2.5rem] p-10 mb-10 relative overflow-hidden">
-              <div className="relative z-10">
-                <div className="flex justify-between items-center mb-8">
-                  <span className="bg-blue-500/20 text-blue-200 px-4 py-1.5 rounded-full text-[10px] font-black uppercase border border-white/5">Résultat Généré</span>
-                  <div className="flex gap-3">
-                    <button onClick={() => setShowRaw(!showRaw)} className="bg-white/10 text-white px-5 py-3 rounded-full"><Code size={18} /></button>
-                    <button onClick={copyToClipboard} className="bg-white text-[#091426] flex items-center gap-2 px-6 py-3 rounded-full">{copySuccess ? <Check size={18} /> : <Copy size={18} />}</button>
-                  </div>
-                </div>
-                <h1 className="text-3xl font-light text-white serif-text italic">Projet Finalisé</h1>
-              </div>
-            </section>
-            
-            <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden flex flex-col">
-              <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]"></div>
-              
-              <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
-                <div className="sans-text">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300 mb-2">Génération Argumentis</p>
-                  <p className="text-base font-black text-[#091426] uppercase leading-none mb-1">{profile?.city ? `Administration de ${profile.city}` : 'Espace Argumentis'}</p>
-                  <p className="text-sm font-bold text-slate-400 italic leading-none">{profile?.role || ''}</p>
-                </div>
-                <div className="text-right sans-text relative z-10"><p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
-              </div>
-
-              <div className="relative z-10 flex-grow">
-                {showRaw ? (
-                  <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans p-8 bg-slate-50 rounded-2xl border border-slate-100">{result}</pre>
-                ) : (
-                  formatResult(result)
-                )}
-              </div>
-
-              {/* MODULE D'AFFINAGE CONVERSATIONNEL */}
-              <div className="mt-12 pt-8 border-t border-slate-100 relative z-10">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-                   <Target size={14} /> Affiner ce résultat (L'IA mémorise vos échanges)
-                </p>
-                <div className="flex gap-3">
-                  <input 
-                    type="text" 
-                    value={refineInput} 
-                    onChange={e => setRefineInput(e.target.value)} 
-                    placeholder="Ex: Raccourcis le texte, adopte un ton plus formel, ajoute une conclusion..." 
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-medium focus:ring-2 focus:ring-[#0058be]/20 shadow-inner"
-                    onKeyDown={e => { if(e.key === 'Enter') handleRefine() }}
-                    disabled={loading}
-                  />
-                  <button 
-                    onClick={handleRefine} 
-                    disabled={loading || !refineInput.trim()} 
-                    className="bg-[#0058be] text-white px-6 rounded-2xl flex items-center justify-center hover:bg-blue-800 transition-colors shadow-lg disabled:opacity-50"
-                  >
-                    {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-16 pt-12 border-t border-slate-50 flex flex-col items-end relative z-10">
-                <div className="text-right">
-                  <div className="w-40 h-20 mb-3 opacity-[0.05] flex items-center justify-end grayscale"><Building2 size={80} /></div>
-                  <p className="serif-text font-bold text-2xl text-[#091426] italic leading-none mb-1">{profile?.role || ''}</p>
-                  <p className="sans-text text-[11px] text-slate-400 font-black uppercase tracking-widest">{profile?.city ? `Territoire de ${profile.city}` : ''}</p>
-                </div>
-              </div>
-            </article>
-          </div>
+          <ResultView 
+            showRaw={showRaw} setShowRaw={setShowRaw} copyToClipboard={copyToClipboard} copySuccess={copySuccess}
+            result={result} profile={profile} refineInput={refineInput} setRefineInput={setRefineInput} handleRefine={handleRefine} loading={loading}
+          />
         )}
 
-        {/* KNOWLEDGE BASE MODULE */}
         {!showResult && activeTab === 'docs' && (
           <KnowledgeBase docs={docs} isAddingDoc={isAddingDoc} setIsAddingDoc={setIsAddingDoc} newDoc={newDoc} setNewDoc={setNewDoc} handleSaveDoc={handleSaveDoc} handleDeleteDoc={handleDeleteDoc} />
         )}
