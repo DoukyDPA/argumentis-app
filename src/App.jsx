@@ -13,7 +13,7 @@ import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
 import { Auth } from './components/Auth'; 
-import { extractTextFromPdf } from './utils/pdfHelper'; // Outil d'extraction PDF
+import { extractTextFromPdf } from './utils/pdfHelper';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('home'); 
@@ -21,13 +21,17 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
-  const [showLegal, setShowLegal] = useState(false); // État pour la modale des mentions légales
+  const [showLegal, setShowLegal] = useState(false);
   
   const [input, setInput] = useState('');
   const [referenceText, setReferenceText] = useState('');
   const [showRef, setShowRef] = useState(false);
-  const [isReadingPdf, setIsReadingPdf] = useState(false); // État de chargement du PDF
+  const [isReadingPdf, setIsReadingPdf] = useState(false);
   const [result, setResult] = useState('');
+
+  // --- NOUVEAUX ÉTATS POUR LA MÉMORISATION ---
+  const [chatHistory, setChatHistory] = useState([]);
+  const [refineInput, setRefineInput] = useState('');
 
   const [details, setDetails] = useState({
     duree: '', cible: '', objectif: '', interlocuteur: '', plateforme: 'LinkedIn', methodeMemo: 'crochets',
@@ -73,7 +77,7 @@ const App = () => {
     try {
       const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
       const unsubscribe = onSnapshot(docsRef, (snapshot) => {
-        // CORRECTION DU BUG DE BUILD : on utilise "docItem" au lieu de "doc" pour ne pas créer de conflit avec l'import de Firestore
+        // CORRECTION DU BUG DE BUILD CONSERVÉE : "docItem"
         const fetchedDocs = snapshot.docs.map(docItem => ({ id: docItem.id, ...docItem.data() }));
         fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setDocs(fetchedDocs);
@@ -139,31 +143,9 @@ const App = () => {
     }
   };
 
-  const callGemini = async (userQuery, systemInstruction) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: userQuery }] }],
-          systemInstruction: { parts: [{ text: systemInstruction }] }
-        })
-      });
-      if (!response.ok) throw new Error(`Erreur serveur (${response.status})`);
-      const data = await response.json();
-      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
-      setResult(text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, ''));
-    } catch (error) {
-      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement et votre clé API.`);
-    }
-    setShowResult(true);
-    setLoading(false);
-  };
-
-  const handleGenerate = () => {
+  // --- FONCTION DE CONSTRUCTION DU PROMPT SYSTÈME ---
+  const buildSystemPrompt = () => {
     const activeDoc = docs.find(d => d.id === selectedDocId);
-    
     let systemPrompt = `Tu es Argumentis, la plume et l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
     
     if (profile?.role || profile?.city) {
@@ -178,7 +160,43 @@ const App = () => {
 - Incarne cette nuance : un élu de gauche, un maire de droite, ou un dirigeant d'association s'expriment différemment et ne défendent pas les mêmes piliers stratégiques. Tes propositions doivent être calibrées sur MESURE.
 - Le ton doit être institutionnel, élégant mais accessible et tourné vers l'action.
 - Évite le jargon complexe.`;
+
+    if (activeDoc) systemPrompt += `\nCONTEXTE PRIORITAIRE ("${activeDoc.title}") : "${activeDoc.content}"`;
+    if (referenceText) systemPrompt += `\n\nMATÉRIAU SOURCE :\n"""\n${referenceText}\n"""\nINSTRUCTION : Prends impérativement en compte ce texte.`;
     
+    return systemPrompt;
+  };
+
+  // --- APPEL API MODIFIÉ POUR ACCEPTER L'HISTORIQUE ---
+  const callGemini = async (historyParams, systemInstruction) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: historyParams,
+          systemInstruction: { parts: [{ text: systemInstruction }] }
+        })
+      });
+      if (!response.ok) throw new Error(`Erreur serveur (${response.status})`);
+      const data = await response.json();
+      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
+      const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
+      
+      setResult(cleanText);
+      // On mémorise la réponse de l'IA pour la suite
+      setChatHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
+    } catch (error) {
+      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement et votre clé API.`);
+    }
+    setShowResult(true);
+    setLoading(false);
+  };
+
+  // --- GÉNÉRATION INITIALE ---
+  const handleGenerate = () => {
+    const systemPrompt = buildSystemPrompt();
     let userQuery = "";
     switch(activeTab) {
       case 'discours': userQuery = `RÉDIGE UN DISCOURS PUBLIC. DURÉE : ${details.duree || '5 min'}. PUBLIC : ${details.cible}. OBJECTIF : ${details.objectif}. SUJET : ${input}.`; break;
@@ -194,10 +212,26 @@ const App = () => {
       default: userQuery = input;
     }
 
-    if (activeDoc) systemPrompt += `\nCONTEXTE PRIORITAIRE ("${activeDoc.title}") : "${activeDoc.content}"`;
-    if (referenceText) systemPrompt += `\n\nMATÉRIAU SOURCE :\n"""\n${referenceText}\n"""\nINSTRUCTION : Prends impérativement en compte ce texte.`;
+    // Initialisation du nouvel historique
+    const initialHistory = [{ role: "user", parts: [{ text: userQuery }] }];
+    setChatHistory(initialHistory);
+    callGemini(initialHistory, systemPrompt);
+  };
+
+  // --- AFFINAGE (MÉMORISATION) ---
+  const handleRefine = () => {
+    if (!refineInput.trim()) return;
+    const systemPrompt = buildSystemPrompt();
     
-    callGemini(userQuery, systemPrompt);
+    // On ajoute la requête d'affinage à l'historique
+    const newUserMessage = { 
+      role: "user", 
+      parts: [{ text: `CONSIGNE D'AFFINAGE : ${refineInput}. Réponds uniquement avec la nouvelle version du texte mis à jour, prêt à l'emploi, sans blabla d'introduction.` }] 
+    };
+    
+    const newHistory = [...chatHistory, newUserMessage];
+    setRefineInput('');
+    callGemini(newHistory, systemPrompt);
   };
 
   const copyToClipboard = () => {
@@ -257,7 +291,14 @@ const App = () => {
       <header className="fixed top-0 left-0 w-full z-[100] flex justify-between items-center px-6 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100">
         <div className="flex items-center gap-3">
           {(showResult || (activeTab !== 'home' && activeTab !== 'docs')) ? (
-            <button onClick={() => { setShowResult(false); if(activeTab !== 'docs' && activeTab !== 'home') setActiveTab('home'); }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full transition-all">
+            <button onClick={() => { 
+              if (showResult) {
+                setShowResult(false); 
+              } else {
+                setActiveTab('home');
+                setChatHistory([]); // Reset historique
+              }
+            }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full transition-all">
               <ArrowLeft size={20} className="text-slate-900" />
             </button>
           ) : (
@@ -298,7 +339,7 @@ const App = () => {
             </section>
             <section className="grid grid-cols-2 lg:grid-cols-3 gap-5">
               {modules.map((m) => (
-                <button key={m.id} onClick={() => setActiveTab(m.id)} className="flex flex-col items-start p-6 bg-white rounded-3xl transition-all active:scale-95 shadow-[0_4px_25px_rgba(0,0,0,0.03)] border border-slate-50 text-left hover:border-blue-100 hover:shadow-xl">
+                <button key={m.id} onClick={() => { setActiveTab(m.id); setChatHistory([]); }} className="flex flex-col items-start p-6 bg-white rounded-3xl transition-all active:scale-95 shadow-[0_4px_25px_rgba(0,0,0,0.03)] border border-slate-50 text-left hover:border-blue-100 hover:shadow-xl">
                   <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mb-4"><span className="text-[#091426]">{m.icon}</span></div>
                   <span className="font-bold text-[#091426] text-sm tracking-tight leading-none">{m.label}</span>
                   <span className="text-[10px] text-slate-400 font-bold uppercase mt-2 leading-tight">{m.sub}</span>
@@ -445,7 +486,7 @@ const App = () => {
               </div>
             </section>
             
-            <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden">
+            <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden flex flex-col">
               <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]"></div>
               
               <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
@@ -457,7 +498,7 @@ const App = () => {
                 <div className="text-right sans-text relative z-10"><p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
               </div>
 
-              <div className="relative z-10">
+              <div className="relative z-10 flex-grow">
                 {showRaw ? (
                   <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans p-8 bg-slate-50 rounded-2xl border border-slate-100">{result}</pre>
                 ) : (
@@ -465,7 +506,32 @@ const App = () => {
                 )}
               </div>
 
-              <div className="mt-24 pt-12 border-t border-slate-50 flex flex-col items-end relative z-10">
+              {/* NOUVEAU MODULE D'AFFINAGE CONVERSATIONNEL */}
+              <div className="mt-12 pt-8 border-t border-slate-100 relative z-10">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                   <Target size={14} /> Affiner ce résultat (L'IA mémorise vos échanges)
+                </p>
+                <div className="flex gap-3">
+                  <input 
+                    type="text" 
+                    value={refineInput} 
+                    onChange={e => setRefineInput(e.target.value)} 
+                    placeholder="Ex: Raccourcis le texte, adopte un ton plus formel, ajoute une conclusion..." 
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-medium focus:ring-2 focus:ring-[#0058be]/20 shadow-inner"
+                    onKeyDown={e => { if(e.key === 'Enter') handleRefine() }}
+                    disabled={loading}
+                  />
+                  <button 
+                    onClick={handleRefine} 
+                    disabled={loading || !refineInput.trim()} 
+                    className="bg-[#0058be] text-white px-6 rounded-2xl flex items-center justify-center hover:bg-blue-800 transition-colors shadow-lg disabled:opacity-50"
+                  >
+                    {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-16 pt-12 border-t border-slate-50 flex flex-col items-end relative z-10">
                 <div className="text-right">
                   <div className="w-40 h-20 mb-3 opacity-[0.05] flex items-center justify-end grayscale"><Building2 size={80} /></div>
                   <p className="serif-text font-bold text-2xl text-[#091426] italic leading-none mb-1">{profile?.role || ''}</p>
@@ -485,9 +551,9 @@ const App = () => {
       {/* BOTTOM NAV */}
       {!showResult && (
         <nav className="fixed bottom-0 left-0 w-full flex justify-around p-4 bg-white/90 backdrop-blur-xl rounded-t-[3rem] shadow-lg border-t border-slate-50 z-[100]">
-          <button onClick={() => { setActiveTab('home'); setInput(''); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
-          <button onClick={() => setActiveTab('discours')} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
-          <button onClick={() => setActiveTab('docs')} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
+          <button onClick={() => { setActiveTab('home'); setInput(''); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
+          <button onClick={() => { setActiveTab('discours'); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
+          <button onClick={() => { setActiveTab('docs'); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
         </nav>
       )}
 
