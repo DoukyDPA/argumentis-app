@@ -7,7 +7,7 @@ import {
   Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
 } from 'lucide-react';
 
-import { auth, db, APP_NAMESPACE, VITE_GEMINI_API_KEY } from './config/firebase';
+import { auth, db, APP_NAMESPACE } from './config/firebase';
 import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
@@ -165,15 +165,18 @@ const App = () => {
   const callGemini = async (historyParams, systemInstruction) => {
     setLoading(true);
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        
+      // Au lieu d'appeler Google directement, on appelle NOTRE nouveau serveur Vercel
+      const response = await fetch('/api/gemini', {        
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: historyParams,
-          systemInstruction: { parts: [{ text: systemInstruction }] }
+          historyParams,
+          systemInstruction
         })
       });
+      
       if (!response.ok) throw new Error(`Erreur serveur (${response.status})`);
+      
       const data = await response.json();
       let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
       const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
@@ -181,7 +184,7 @@ const App = () => {
       setResult(cleanText);
       setChatHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
     } catch (error) {
-      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement et votre clé API.`);
+      setResult(`⚠️ Erreur : ${error.message}`);
     }
     setShowResult(true);
     setLoading(false);
