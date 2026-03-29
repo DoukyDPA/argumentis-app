@@ -3,7 +3,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { 
   PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
-  BookOpen, Send, Target, Clock, Users, UserCircle, LogOut, Upload,
+  BookOpen, Send, Target, UserCircle, LogOut, Upload,
   Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
 } from 'lucide-react';
 
@@ -73,7 +73,8 @@ const App = () => {
     try {
       const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
       const unsubscribe = onSnapshot(docsRef, (snapshot) => {
-        const fetchedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // CORRECTION DU BUG DE BUILD : on utilise "docItem" au lieu de "doc" pour ne pas créer de conflit avec l'import de Firestore
+        const fetchedDocs = snapshot.docs.map(docItem => ({ id: docItem.id, ...docItem.data() }));
         fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setDocs(fetchedDocs);
         setSelectedDocId(prev => (fetchedDocs.length > 0 && !prev) ? fetchedDocs[0].id : prev);
@@ -141,7 +142,6 @@ const App = () => {
   const callGemini = async (userQuery, systemInstruction) => {
     setLoading(true);
     try {
-      // Modèle non modifié comme demandé
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -294,7 +294,6 @@ const App = () => {
             <section className="mt-6 mb-12">
               <p className="text-[10px] font-black text-[#0058be] uppercase tracking-[0.3em] mb-3">Tableau de bord</p>
               <h2 className="serif-text text-4xl font-light text-[#091426] leading-tight">Bonjour, <span className="font-semibold italic text-[#0058be]">{profile?.firstName || 'vous'}</span></h2>
-              {/* Ajout du sous-titre */}
               <p className="text-slate-500 mt-2 font-medium text-lg">Assistant d'argumentation pour les décideurs</p>
             </section>
             <section className="grid grid-cols-2 lg:grid-cols-3 gap-5">
@@ -307,10 +306,9 @@ const App = () => {
               ))}
             </section>
 
-            {/* Lien des mentions légales */}
             <div className="mt-16 text-center pb-8">
               <button onClick={() => setShowLegal(true)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline decoration-slate-200 underline-offset-4">
-                Mentions légales & Politique de confidentialité
+                Mentions légales &amp; Politique de confidentialité
               </button>
             </div>
           </div>
@@ -324,7 +322,6 @@ const App = () => {
                 <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#0058be] mb-2">Rédaction Stratégique</p>
                 <h2 className="serif-text text-4xl font-light text-[#091426] italic leading-tight">{modules.find(m => m.id === activeTab)?.label}</h2>
               </div>
-              {/* Le choix du document est maintenant disponible pour TOUS les modules */}
               {docs.length > 0 && (
                 <select value={selectedDocId} onChange={e => setSelectedDocId(e.target.value)} className="hidden sm:block bg-white border border-slate-100 text-slate-600 text-xs font-bold rounded-xl px-4 py-2 shadow-sm">
                   <option value="">Aucun document lié</option>
@@ -503,7 +500,7 @@ const App = () => {
               <p><strong>Éditeur de l'application :</strong> Argumentis</p>
               <p><strong>Hébergement :</strong> Firebase (Google LLC), hébergé en Europe.</p>
               <p><strong>Propriété intellectuelle :</strong> Le contenu généré et la structure de l'application sont protégés par les lois en vigueur sur la propriété intellectuelle.</p>
-              <p><strong>Confidentialité & RGPD :</strong> Vos données de profil et vos documents sont stockés de manière sécurisée et chiffrée. Ils ne sont utilisés que pour la génération de vos textes par l'IA et ne sont pas partagés à des tiers à des fins commerciales. Vous disposez d'un droit d'accès, de modification et de suppression de vos données directement depuis votre espace profil.</p>
+              <p><strong>Confidentialité &amp; RGPD :</strong> Vos données de profil et vos documents sont stockés de manière sécurisée et chiffrée. Ils ne sont utilisés que pour la génération de vos textes par l'IA et ne sont pas partagés à des tiers à des fins commerciales. Vous disposez d'un droit d'accès, de modification et de suppression de vos données directement depuis votre espace profil.</p>
             </div>
             <button onClick={() => setShowLegal(false)} className="mt-8 w-full bg-[#0058be] text-white font-bold py-4 rounded-2xl hover:bg-blue-800 transition-colors">
               Fermer
