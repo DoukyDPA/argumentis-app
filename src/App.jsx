@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth'; // On retire signInAnonymously et on ajoute signOut
 import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { 
   PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
-  BookOpen, Send, Target, Clock, Users, UserCircle, 
-  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail, Code, Brain, ListOrdered, User, Paperclip
+  BookOpen, Send, Target, Clock, Users, UserCircle, LogOut,
+  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
 } from 'lucide-react';
 
 // Imports des fichiers refactorisés
@@ -12,6 +12,7 @@ import { auth, db, APP_NAMESPACE, VITE_GEMINI_API_KEY } from './config/firebase'
 import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
+import { Auth } from './components/Auth'; // Import du nouveau composant
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('home'); 
@@ -32,7 +33,7 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [isEditingProfile, setIsEditingProfile] = useState(false); // Nouvel état pour l'édition du profil
+  const [isEditingProfile, setIsEditingProfile] = useState(false); 
 
   const [docs, setDocs] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState('');
@@ -41,15 +42,7 @@ const App = () => {
 
   // Authentification et récupération du profil
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (err) {
-        console.error("Erreur d'authentification Firebase:", err);
-      }
-    };
-    initAuth();
-    
+    // Plus de connexion anonyme ici ! On écoute juste l'état de l'utilisateur.
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -58,10 +51,14 @@ const App = () => {
           const docSnap = await getDoc(docRef);
           if (docSnap.exists() && docSnap.data().profile) {
             setProfile(docSnap.data().profile);
+          } else {
+             setProfile(null); // Si aucun profil, on force le passage par l'onboarding
           }
         } catch (err) {
           console.error("Erreur lors de la lecture du profil:", err);
         }
+      } else {
+         setProfile(null);
       }
       setAuthLoading(false);
     });
@@ -89,7 +86,7 @@ const App = () => {
     { id: 'discours', label: 'Discours', sub: 'Élocutions officielles', icon: <PenTool size={24} /> },
     { id: 'langage', label: 'Fiche Langage', sub: 'Persuasion incarnée', icon: <ShieldCheck size={24} /> },
     { id: 'argumentaire', label: 'Note de Synthèse', sub: 'Aide à la décision factuelle', icon: <MessageSquare size={24} /> },
-    { id: 'mail', label: 'Courriel Personnel', sub: 'Correspondance ciblée', icon: <Mail size={24} /> },
+    { id: 'mail', label: 'Courriel Personnel', sub: 'Correspondance ciblée', icon: <MailIcon size={24} /> },
     { id: 'social', label: 'Réseaux Sociaux', sub: 'Storytelling & Engagement', icon: <Share2 size={24} /> },
     { id: 'memoriser', label: 'Mémoriser', sub: 'Ancrage & Répétition', icon: <Brain size={24} /> },
   ];
@@ -112,8 +109,7 @@ const App = () => {
   const callGemini = async (userQuery, systemInstruction) => {
     setLoading(true);
     try {
-      // Correction de l'URL et utilisation de VITE_GEMINI_API_KEY
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -126,7 +122,7 @@ const App = () => {
       let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
       setResult(text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, ''));
     } catch (error) {
-      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement.`);
+      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement et votre clé API.`);
     }
     setShowResult(true);
     setLoading(false);
@@ -135,13 +131,11 @@ const App = () => {
   const handleGenerate = () => {
     const activeDoc = docs.find(d => d.id === selectedDocId);
     
-    // Construction dynamique du prompt système grâce au profil (mise à jour)
     let systemPrompt = `Tu es Argumentis, la plume et l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
     
     if (profile?.role || profile?.city) {
       systemPrompt += `Il exerce la fonction de ${profile?.role || 'professionnel'} ${profile?.city ? `à ${profile?.city}` : ''}. `;
     }
-
     if (profile?.orientation) {
       systemPrompt += `Sa ligne directrice et sa sensibilité politique/associative sont : ${profile.orientation}. `;
     }
@@ -153,7 +147,6 @@ const App = () => {
 - Évite le jargon complexe.`;
     
     let userQuery = "";
-
     switch(activeTab) {
       case 'discours': userQuery = `RÉDIGE UN DISCOURS PUBLIC. DURÉE : ${details.duree || '5 min'}. PUBLIC : ${details.cible}. OBJECTIF : ${details.objectif}. SUJET : ${input}.`; break;
       case 'langage': userQuery = `RÉDIGE UNE FICHE DE LANGAGE. Inclus : Miroir, Mots Totémiques. CONSIGNE : ${details.objectif}. SUJET : ${input}.`; break;
@@ -186,7 +179,15 @@ const App = () => {
     setTimeout(() => setCopySuccess(false), 2000);
   };
 
-  // Gestion du chargement initial
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Erreur lors de la déconnexion", error);
+    }
+  };
+
+  // 1. Écran de chargement initial
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#e6eef6] flex items-center justify-center">
@@ -195,7 +196,12 @@ const App = () => {
     );
   }
 
-  // Affichage du module d'inscription ou d'édition du profil
+  // 2. Utilisateur non connecté -> Affichage de l'écran d'Auth
+  if (!user) {
+    return <Auth />;
+  }
+
+  // 3. Utilisateur connecté mais sans profil (ou en mode édition) -> Affichage du paramétrage
   if (user && (!profile || isEditingProfile)) {
     return (
       <Onboarding 
@@ -209,6 +215,7 @@ const App = () => {
     );
   }
 
+  // 4. Interface principale
   return (
     <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased">
       <style>{`
@@ -230,17 +237,24 @@ const App = () => {
           <h1 className="text-xl font-black tracking-tighter text-slate-900 uppercase sans-text">Argumentis</h1>
         </div>
         
-        {/* Zone de profil cliquable pour l'édition */}
-        <div 
-          className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" 
-          onClick={() => setIsEditingProfile(true)}
-          title="Modifier mon profil"
-        >
-          <div className="hidden lg:flex flex-col items-end border-r border-slate-100 pr-4 text-right">
-             <span className="text-[10px] font-black text-[#0058be] uppercase">{profile?.city || 'Espace Privé'}</span>
-             <span className="text-[11px] font-bold text-slate-700 truncate max-w-[12rem]">{profile?.role || 'Utilisateur'}</span>
+        <div className="flex items-center gap-4">
+          {/* Zone de profil cliquable */}
+          <div 
+            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" 
+            onClick={() => setIsEditingProfile(true)}
+            title="Modifier mon profil"
+          >
+            <div className="hidden lg:flex flex-col items-end border-r border-slate-100 pr-4 text-right">
+               <span className="text-[10px] font-black text-[#0058be] uppercase">{profile?.city || 'Espace Privé'}</span>
+               <span className="text-[11px] font-bold text-slate-700 truncate max-w-[12rem]">{profile?.role || 'Utilisateur'}</span>
+            </div>
+            <UserCircle size={28} className="text-[#0058be]" />
           </div>
-          <UserCircle size={28} className="text-[#0058be]" />
+          
+          {/* Bouton de déconnexion */}
+          <button onClick={handleSignOut} className="text-slate-400 hover:text-red-500 transition-colors ml-2" title="Se déconnecter">
+            <LogOut size={20} />
+          </button>
         </div>
       </header>
 
@@ -334,7 +348,6 @@ const App = () => {
                 </div>
               </div>
               
-              {/* Texte de référence optionnel */}
               <div className="space-y-4">
                 <button 
                   onClick={() => setShowRef(!showRef)}
@@ -387,7 +400,6 @@ const App = () => {
             </section>
             
             <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden">
-              {/* Image de fond texturée */}
               <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]"></div>
               
               <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
