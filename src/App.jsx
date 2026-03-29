@@ -7,13 +7,12 @@ import {
   Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
 } from 'lucide-react';
 
-// Imports des fichiers refactorisés
 import { auth, db, APP_NAMESPACE, VITE_GEMINI_API_KEY } from './config/firebase';
 import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
 import { Auth } from './components/Auth'; 
-import { extractTextFromPdf } from './utils/pdfHelper'; // Outil d'extraction PDF
+import { extractTextFromPdf } from './utils/pdfHelper'; 
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('home'); 
@@ -21,12 +20,16 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  const [showLegal, setShowLegal] = useState(false);
   
   const [input, setInput] = useState('');
   const [referenceText, setReferenceText] = useState('');
   const [showRef, setShowRef] = useState(false);
-  const [isReadingPdf, setIsReadingPdf] = useState(false); // État de chargement du PDF
+  const [isReadingPdf, setIsReadingPdf] = useState(false); 
   const [result, setResult] = useState('');
+
+  const [chatHistory, setChatHistory] = useState([]);
+  const [refineInput, setRefineInput] = useState('');
 
   const [details, setDetails] = useState({
     duree: '', cible: '', objectif: '', interlocuteur: '', plateforme: 'LinkedIn', methodeMemo: 'crochets',
@@ -42,7 +45,6 @@ const App = () => {
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
 
-  // Authentification et récupération du profil
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -66,13 +68,13 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // Synchronisation de la base de documents
   useEffect(() => {
     if (!user || !profile) return;
     try {
       const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
       const unsubscribe = onSnapshot(docsRef, (snapshot) => {
-        const fetchedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Renommage ici pour éviter le conflit avec l'import `doc` de Firebase
+        const fetchedDocs = snapshot.docs.map(dItem => ({ id: dItem.id, ...dItem.data() }));
         fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setDocs(fetchedDocs);
         setSelectedDocId(prev => (fetchedDocs.length > 0 && !prev) ? fetchedDocs[0].id : prev);
@@ -84,12 +86,12 @@ const App = () => {
   }, [user, profile]);
 
   const modules = [
-    { id: 'discours', label: 'Discours', sub: 'Élocutions officielles', icon: <PenTool size={24} /> },
-    { id: 'langage', label: 'Fiche Langage', sub: 'Persuasion incarnée', icon: <ShieldCheck size={24} /> },
-    { id: 'argumentaire', label: 'Note de Synthèse', sub: 'Aide à la décision factuelle', icon: <MessageSquare size={24} /> },
-    { id: 'mail', label: 'Courriel Personnel', sub: 'Correspondance ciblée', icon: <MailIcon size={24} /> },
-    { id: 'social', label: 'Réseaux Sociaux', sub: 'Storytelling & Engagement', icon: <Share2 size={24} /> },
-    { id: 'memoriser', label: 'Mémoriser', sub: 'Ancrage & Répétition', icon: <Brain size={24} /> },
+    { id: 'discours', label: 'Discours', sub: 'Allocutions officielles', icon: <PenTool size={24} /> },
+    { id: 'langage', label: 'Fiches argumentaires', sub: 'Éléments de langage', icon: <ShieldCheck size={24} /> },
+    { id: 'argumentaire', label: 'Note de synthèse', sub: 'Aide à la décision factuelle', icon: <MessageSquare size={24} /> },
+    { id: 'mail', label: 'Courriel personnel', sub: 'Correspondance ciblée', icon: <MailIcon size={24} /> },
+    { id: 'social', label: 'Réseaux sociaux', sub: 'Storytelling & engagement', icon: <Share2 size={24} /> },
+    { id: 'memoriser', label: 'Mémoriser', sub: 'Astuces mnémotechniques', icon: <Brain size={24} /> },
   ];
 
   const handleSaveDoc = async () => {
@@ -137,30 +139,8 @@ const App = () => {
     }
   };
 
-  const callGemini = async (userQuery, systemInstruction) => {
-    setLoading(true);
-    try {
-const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: userQuery }] }],
-          systemInstruction: { parts: [{ text: systemInstruction }] }
-        })
-      });
-      if (!response.ok) throw new Error(`Erreur serveur (${response.status})`);
-      const data = await response.json();
-      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
-      setResult(text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, ''));
-    } catch (error) {
-      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement et votre clé API.`);
-    }
-    setShowResult(true);
-    setLoading(false);
-  };
-
-  const handleGenerate = () => {
+  const buildSystemPrompt = () => {
     const activeDoc = docs.find(d => d.id === selectedDocId);
-    
     let systemPrompt = `Tu es Argumentis, la plume et l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
     
     if (profile?.role || profile?.city) {
@@ -175,7 +155,40 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
 - Incarne cette nuance : un élu de gauche, un maire de droite, ou un dirigeant d'association s'expriment différemment et ne défendent pas les mêmes piliers stratégiques. Tes propositions doivent être calibrées sur MESURE.
 - Le ton doit être institutionnel, élégant mais accessible et tourné vers l'action.
 - Évite le jargon complexe.`;
+
+    if (activeDoc) systemPrompt += `\nCONTEXTE PRIORITAIRE ("${activeDoc.title}") : "${activeDoc.content}"`;
+    if (referenceText) systemPrompt += `\n\nMATÉRIAU SOURCE :\n"""\n${referenceText}\n"""\nINSTRUCTION : Prends impérativement en compte ce texte.`;
     
+    return systemPrompt;
+  };
+
+  const callGemini = async (historyParams, systemInstruction) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: historyParams,
+          systemInstruction: { parts: [{ text: systemInstruction }] }
+        })
+      });
+      if (!response.ok) throw new Error(`Erreur serveur (${response.status})`);
+      const data = await response.json();
+      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
+      const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
+      
+      setResult(cleanText);
+      setChatHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
+    } catch (error) {
+      setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement et votre clé API.`);
+    }
+    setShowResult(true);
+    setLoading(false);
+  };
+
+  const handleGenerate = () => {
+    const systemPrompt = buildSystemPrompt();
     let userQuery = "";
     switch(activeTab) {
       case 'discours': userQuery = `RÉDIGE UN DISCOURS PUBLIC. DURÉE : ${details.duree || '5 min'}. PUBLIC : ${details.cible}. OBJECTIF : ${details.objectif}. SUJET : ${input}.`; break;
@@ -191,10 +204,22 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
       default: userQuery = input;
     }
 
-    if (activeDoc) systemPrompt += `\nCONTEXTE PRIORITAIRE ("${activeDoc.title}") : "${activeDoc.content}"`;
-    if (referenceText) systemPrompt += `\n\nMATÉRIAU SOURCE :\n"""\n${referenceText}\n"""\nINSTRUCTION : Prends impérativement en compte ce texte.`;
+    const initialHistory = [{ role: "user", parts: [{ text: userQuery }] }];
+    setChatHistory(initialHistory);
+    callGemini(initialHistory, systemPrompt);
+  };
+
+  const handleRefine = () => {
+    if (!refineInput.trim()) return;
+    const systemPrompt = buildSystemPrompt();
+    const newUserMessage = { 
+      role: "user", 
+      parts: [{ text: `CONSIGNE D'AFFINAGE : ${refineInput}. Réponds uniquement avec la nouvelle version du texte mis à jour, prêt à l'emploi, sans blabla d'introduction.` }] 
+    };
     
-    callGemini(userQuery, systemPrompt);
+    const newHistory = [...chatHistory, newUserMessage];
+    setRefineInput('');
+    callGemini(newHistory, systemPrompt);
   };
 
   const copyToClipboard = () => {
@@ -243,7 +268,7 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
   }
 
   return (
-    <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased">
+    <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased relative">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap');
         .serif-text { font-family: 'Newsreader', serif; }
@@ -254,7 +279,13 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
       <header className="fixed top-0 left-0 w-full z-[100] flex justify-between items-center px-6 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100">
         <div className="flex items-center gap-3">
           {(showResult || (activeTab !== 'home' && activeTab !== 'docs')) ? (
-            <button onClick={() => { setShowResult(false); if(activeTab !== 'docs' && activeTab !== 'home') setActiveTab('home'); }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full transition-all">
+            <button onClick={() => { 
+              setShowResult(false); 
+              if(activeTab !== 'docs' && activeTab !== 'home') {
+                setActiveTab('home');
+                setChatHistory([]);
+              } 
+            }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full transition-all">
               <ArrowLeft size={20} className="text-slate-900" />
             </button>
           ) : (
@@ -291,16 +322,23 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
             <section className="mt-6 mb-12">
               <p className="text-[10px] font-black text-[#0058be] uppercase tracking-[0.3em] mb-3">Tableau de bord</p>
               <h2 className="serif-text text-4xl font-light text-[#091426] leading-tight">Bonjour, <span className="font-semibold italic text-[#0058be]">{profile?.firstName || 'vous'}</span></h2>
+              <p className="text-slate-500 mt-2 font-medium text-lg">Assistant d'argumentation pour les décideurs</p>
             </section>
             <section className="grid grid-cols-2 lg:grid-cols-3 gap-5">
               {modules.map((m) => (
-                <button key={m.id} onClick={() => setActiveTab(m.id)} className="flex flex-col items-start p-6 bg-white rounded-3xl transition-all active:scale-95 shadow-[0_4px_25px_rgba(0,0,0,0.03)] border border-slate-50 text-left hover:border-blue-100 hover:shadow-xl">
+                <button key={m.id} onClick={() => { setActiveTab(m.id); setChatHistory([]); }} className="flex flex-col items-start p-6 bg-white rounded-3xl transition-all active:scale-95 shadow-[0_4px_25px_rgba(0,0,0,0.03)] border border-slate-50 text-left hover:border-blue-100 hover:shadow-xl">
                   <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mb-4"><span className="text-[#091426]">{m.icon}</span></div>
                   <span className="font-bold text-[#091426] text-sm tracking-tight leading-none">{m.label}</span>
                   <span className="text-[10px] text-slate-400 font-bold uppercase mt-2 leading-tight">{m.sub}</span>
                 </button>
               ))}
             </section>
+
+            <div className="mt-16 text-center pb-8">
+              <button onClick={() => setShowLegal(true)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline decoration-slate-200 underline-offset-4">
+                Mentions légales &amp; Politique de confidentialité
+              </button>
+            </div>
           </div>
         )}
 
@@ -312,7 +350,7 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
                 <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#0058be] mb-2">Rédaction Stratégique</p>
                 <h2 className="serif-text text-4xl font-light text-[#091426] italic leading-tight">{modules.find(m => m.id === activeTab)?.label}</h2>
               </div>
-              {activeTab !== 'memoriser' && docs.length > 0 && (
+              {docs.length > 0 && (
                 <select value={selectedDocId} onChange={e => setSelectedDocId(e.target.value)} className="hidden sm:block bg-white border border-slate-100 text-slate-600 text-xs font-bold rounded-xl px-4 py-2 shadow-sm">
                   <option value="">Aucun document lié</option>
                   {docs.map(d => <option key={d.id} value={d.id}>📘 {d.title}</option>)}
@@ -361,7 +399,6 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
                     <div className="md:col-span-1 space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Interlocuteur</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.interlocuteur} onChange={e => setDetails({...details, interlocuteur: e.target.value})} placeholder="Ex: Préfet, Directeur..." /></div>
                   )}
 
-                  {/* Le champ Objectif & Ton s'affiche maintenant partout sauf pour la mémorisation */}
                   {activeTab !== 'memoriser' && (
                     <div className={`space-y-2 ${activeTab === 'social' ? 'md:col-span-2' : 'md:col-span-1'}`}>
                       <label className="text-[10px] font-black text-slate-500 uppercase px-1">Objectif & Ton</label>
@@ -436,7 +473,7 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
               </div>
             </section>
             
-            <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden">
+            <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden flex flex-col">
               <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]"></div>
               
               <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
@@ -448,7 +485,7 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
                 <div className="text-right sans-text relative z-10"><p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
               </div>
 
-              <div className="relative z-10">
+              <div className="relative z-10 flex-grow">
                 {showRaw ? (
                   <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans p-8 bg-slate-50 rounded-2xl border border-slate-100">{result}</pre>
                 ) : (
@@ -456,7 +493,32 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
                 )}
               </div>
 
-              <div className="mt-24 pt-12 border-t border-slate-50 flex flex-col items-end relative z-10">
+              {/* MODULE D'AFFINAGE CONVERSATIONNEL */}
+              <div className="mt-12 pt-8 border-t border-slate-100 relative z-10">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                   <Target size={14} /> Affiner ce résultat (L'IA mémorise vos échanges)
+                </p>
+                <div className="flex gap-3">
+                  <input 
+                    type="text" 
+                    value={refineInput} 
+                    onChange={e => setRefineInput(e.target.value)} 
+                    placeholder="Ex: Raccourcis le texte, adopte un ton plus formel, ajoute une conclusion..." 
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-medium focus:ring-2 focus:ring-[#0058be]/20 shadow-inner"
+                    onKeyDown={e => { if(e.key === 'Enter') handleRefine() }}
+                    disabled={loading}
+                  />
+                  <button 
+                    onClick={handleRefine} 
+                    disabled={loading || !refineInput.trim()} 
+                    className="bg-[#0058be] text-white px-6 rounded-2xl flex items-center justify-center hover:bg-blue-800 transition-colors shadow-lg disabled:opacity-50"
+                  >
+                    {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-16 pt-12 border-t border-slate-50 flex flex-col items-end relative z-10">
                 <div className="text-right">
                   <div className="w-40 h-20 mb-3 opacity-[0.05] flex items-center justify-end grayscale"><Building2 size={80} /></div>
                   <p className="serif-text font-bold text-2xl text-[#091426] italic leading-none mb-1">{profile?.role || ''}</p>
@@ -476,10 +538,28 @@ const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/m
       {/* BOTTOM NAV */}
       {!showResult && (
         <nav className="fixed bottom-0 left-0 w-full flex justify-around p-4 bg-white/90 backdrop-blur-xl rounded-t-[3rem] shadow-lg border-t border-slate-50 z-[100]">
-          <button onClick={() => { setActiveTab('home'); setInput(''); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
-          <button onClick={() => setActiveTab('discours')} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
-          <button onClick={() => setActiveTab('docs')} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
+          <button onClick={() => { setActiveTab('home'); setInput(''); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
+          <button onClick={() => { setActiveTab('discours'); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
+          <button onClick={() => { setActiveTab('docs'); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
         </nav>
+      )}
+
+      {/* MODALE MENTIONS LÉGALES */}
+      {showLegal && (
+        <div className="fixed inset-0 z-[200] bg-[#091426]/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <h2 className="text-2xl font-black text-[#091426] mb-6 serif-text">Mentions Légales</h2>
+            <div className="space-y-4 text-sm text-slate-600 h-64 overflow-y-auto pr-2">
+              <p><strong>Éditeur de l'application :</strong> Argumentis</p>
+              <p><strong>Hébergement :</strong> Firebase (Google LLC), hébergé en Europe.</p>
+              <p><strong>Propriété intellectuelle :</strong> Le contenu généré et la structure de l'application sont protégés par les lois en vigueur sur la propriété intellectuelle.</p>
+              <p><strong>Confidentialité &amp; RGPD :</strong> Vos données de profil et vos documents sont stockés de manière sécurisée et chiffrée. Ils ne sont utilisés que pour la génération de vos textes par l'IA et ne sont pas partagés à des tiers à des fins commerciales. Vous disposez d'un droit d'accès, de modification et de suppression de vos données directement depuis votre espace profil.</p>
+            </div>
+            <button onClick={() => setShowLegal(false)} className="mt-8 w-full bg-[#0058be] text-white font-bold py-4 rounded-2xl hover:bg-blue-800 transition-colors">
+              Fermer
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
