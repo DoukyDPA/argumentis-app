@@ -21,4 +21,4 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 export const APP_NAMESPACE = 'argumentis-prod-v1';
-export const GEMINI_API_KEY = getEnv('VITE_GEMINI_API_KEY');
+export const VITE_GEMINI_API_KEY = getEnv('VITE_GEMINI_API_KEY');
