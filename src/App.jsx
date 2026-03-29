@@ -1,51 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 import { collection, onSnapshot, addDoc, deleteDoc, doc as firestoreDoc, getDoc } from 'firebase/firestore';
-import { 
-  PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
-  BookOpen, Send, Target, Clock, Users, UserCircle, LogOut, Upload,
-  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
-} from 'lucide-react';
+import { Home, Folder, ArrowLeft, UserCircle, LogOut, Loader2 } from 'lucide-react';
 
-import { auth, db, APP_NAMESPACE, VITE_GEMINI_API_KEY } from './config/firebase';
-import { formatResult } from './utils/formatters';
+import { auth, db, APP_NAMESPACE } from './config/firebase';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
 import { Auth } from './components/Auth'; 
-import { extractTextFromPdf } from './utils/pdfHelper';
+import { Dashboard } from './components/Dashboard';
+import { Generator } from './components/Generator';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('home'); 
-  const [showResult, setShowResult] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
-  const [showRaw, setShowRaw] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
   
-  const [input, setInput] = useState('');
-  const [referenceText, setReferenceText] = useState('');
-  const [showRef, setShowRef] = useState(false);
-  const [isReadingPdf, setIsReadingPdf] = useState(false);
-  const [result, setResult] = useState('');
-
-  const [chatHistory, setChatHistory] = useState([]);
-  const [refineInput, setRefineInput] = useState('');
-
-  const [details, setDetails] = useState({
-    duree: '', cible: '', objectif: '', interlocuteur: '', plateforme: 'LinkedIn', methodeMemo: 'crochets',
-  });
-
-  // Rollup fix : renommage strict pour éviter tout conflit avec "User" (Lucide)
   const [sessionUser, setSessionUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isEditingProfile, setIsEditingProfile] = useState(false); 
 
   const [docs, setDocs] = useState([]);
-  const [selectedDocId, setSelectedDocId] = useState('');
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
 
+  // Auth & Profile Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setSessionUser(currentUser);
@@ -58,9 +36,7 @@ const App = () => {
           } else {
              setProfile(null); 
           }
-        } catch (authErr) {
-          console.error("Erreur lecture profil:", authErr);
-        }
+        } catch (err) { console.error(err); }
       } else {
          setProfile(null);
       }
@@ -69,221 +45,25 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
+  // Documents Listener
   useEffect(() => {
     if (!sessionUser || !profile) return;
-    
-    let unsubscribeDocs; 
-    
-    try {
-      const docsCollectionRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents');
-      unsubscribeDocs = onSnapshot(docsCollectionRef, (snapshot) => {
-        const fetchedDocs = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
-        fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setDocs(fetchedDocs);
-        setSelectedDocId(prev => (fetchedDocs.length > 0 && !prev) ? fetchedDocs[0].id : prev);
-      });
-    } catch (dbErr) {
-      console.error("Erreur Firestore:", dbErr);
-    }
-    
-    return () => {
-      if (unsubscribeDocs) unsubscribeDocs();
-    };
+    const docsCollection = collection(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents');
+    const unsub = onSnapshot(docsCollection, (snapshot) => {
+      const fetched = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+      setDocs(fetched.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+    });
+    return () => unsub();
   }, [sessionUser, profile]);
 
-  const modules = [
-    { id: 'discours', label: 'Discours', sub: 'Allocutions officielles', icon: <PenTool size={24} /> },
-    { id: 'langage', label: 'Fiches argumentaires', sub: 'Éléments de langage', icon: <ShieldCheck size={24} /> },
-    { id: 'argumentaire', label: 'Note de synthèse', sub: 'Aide à la décision factuelle', icon: <MessageSquare size={24} /> },
-    { id: 'mail', label: 'Courriel personnel', sub: 'Correspondance ciblée', icon: <MailIcon size={24} /> },
-    { id: 'social', label: 'Réseaux sociaux', sub: 'Storytelling & engagement', icon: <Share2 size={24} /> },
-    { id: 'memoriser', label: 'Mémoriser', sub: 'Astuces mnémotechniques', icon: <Brain size={24} /> },
-  ];
+  const handleSignOut = () => signOut(auth);
 
-  // Extraction des tableaux pour soulager le parser JSX de Vite/Rollup
-  const socialPlatforms = ['LinkedIn', 'X', 'Facebook', 'Instagram'];
-  const memoTechniques = [
-    { id: 'crochets', label: 'Crochets', icon: <ListOrdered size={20} /> },
-    { id: 'corps', label: 'Loci Corporel', icon: <User size={20} /> },
-    { id: 'balises', label: 'Balises', icon: <Target size={20} /> }
-  ];
-
-  const handleSaveDoc = async () => {
-    if (!sessionUser || !newDoc.title || !newDoc.content) return;
-    await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents'), {
-      ...newDoc, createdAt: Date.now()
-    });
-    setIsAddingDoc(false);
-    setNewDoc({ title: '', category: 'Référence', content: '' });
-  };
-
-  const handleDeleteDoc = async (idToDelete) => {
-    if (!sessionUser) return;
-    await deleteDoc(firestoreDoc(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents', idToDelete));
-    setSelectedDocId(prev => prev === idToDelete ? '' : prev);
-  };
-
-  const handleRefFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert("⚠️ Le fichier est trop volumineux (limite : 5 Mo).");
-      return;
-    }
-    
-    setIsReadingPdf(true);
-    try {
-      let extractedText = '';
-      if (file.type === 'application/pdf') {
-        extractedText = await extractTextFromPdf(file);
-      } else {
-        extractedText = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (event) => resolve(event.target.result);
-          reader.onerror = (readErr) => reject(readErr);
-          reader.readAsText(file);
-        });
-      }
-      setReferenceText(prev => prev ? prev + "\n\n" + extractedText : extractedText);
-    } catch (fileErr) {
-      alert("Erreur lors de la lecture du fichier.");
-    } finally {
-      setIsReadingPdf(false);
-      e.target.value = null;
-    }
-  };
-
-  const buildSystemPrompt = () => {
-    const activeDoc = docs.find(d => d.id === selectedDocId);
-    let systemPrompt = `Tu es Argumentis, la plume et l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
-    
-    if (profile?.role || profile?.city) {
-      systemPrompt += `Il exerce la fonction de ${profile?.role || 'professionnel'} ${profile?.city ? `à ${profile?.city}` : ''}. `;
-    }
-    if (profile?.orientation) {
-      systemPrompt += `Sa ligne directrice et sa sensibilité politique/associative sont : ${profile.orientation}. `;
-    }
-
-    systemPrompt += `\nDIRECTIVES STRICTES DE PERSONNIFICATION :
-- Tu dois IMPÉRATIVEMENT adapter le fond (priorités thématiques, arguments) et la forme (ton, champ lexical) pour qu'ils reflètent exactement son rôle et son bord politique ou idéologique. 
-- Incarne cette nuance : un élu de gauche, un maire de droite, ou un dirigeant d'association s'expriment différemment et ne défendent pas les mêmes piliers stratégiques. Tes propositions doivent être calibrées sur MESURE.
-- Le ton doit être institutionnel, élégant mais accessible et tourné vers l'action.
-- Évite le jargon complexe.`;
-
-    if (activeDoc) systemPrompt += `\nCONTEXTE PRIORITAIRE ("${activeDoc.title}") : "${activeDoc.content}"`;
-    if (referenceText) systemPrompt += `\n\nMATÉRIAU SOURCE :\n"""\n${referenceText}\n"""\nINSTRUCTION : Prends impérativement en compte ce texte.`;
-    
-    return systemPrompt;
-  };
-
-  const callGemini = async (historyParams, systemInstruction) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${VITE_GEMINI_API_KEY}`, {        
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: historyParams,
-          systemInstruction: { parts: [{ text: systemInstruction }] }
-        })
-      });
-      if (!response.ok) throw new Error(`Erreur serveur (${response.status})`);
-      const data = await response.json();
-      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
-      const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
-      
-      setResult(cleanText);
-      setChatHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
-    } catch (apiErr) {
-      setResult(`⚠️ Erreur : ${apiErr.message}\nVérifiez vos variables d'environnement et votre clé API.`);
-    }
-    setShowResult(true);
-    setLoading(false);
-  };
-
-  const handleGenerate = () => {
-    const systemPrompt = buildSystemPrompt();
-    let userQuery = "";
-    switch(activeTab) {
-      case 'discours': userQuery = `RÉDIGE UN DISCOURS PUBLIC. DURÉE : ${details.duree || '5 min'}. PUBLIC : ${details.cible}. OBJECTIF : ${details.objectif}. SUJET : ${input}.`; break;
-      case 'langage': userQuery = `RÉDIGE UNE FICHE DE LANGAGE. Inclus : Miroir, Mots Totémiques. CONSIGNE : ${details.objectif}. SUJET : ${input}.`; break;
-      case 'argumentaire': userQuery = `RÉDIGE UNE NOTE DE SYNTHÈSE FACTUELLE. INTERLOCUTEUR : ${details.interlocuteur}. FOND : ${input}.`; break;
-      case 'mail': userQuery = `RÉDIGE UN COURRIEL PERSONNALISÉ. INTERLOCUTEUR : ${details.interlocuteur}. OBJECTIF : ${details.objectif}. CONTEXTE : ${input}.`; break;
-      case 'social': userQuery = `RÉDIGE UNE PUBLICATION POUR ${details.plateforme}. TON : ${details.objectif}. SUJET : ${input}.`; break;
-      case 'memoriser':
-        if (details.methodeMemo === 'corps') userQuery = `Expert en mémorisation (méthode loci corporelle). Crée un tableau Markdown : | Partie du corps | Mot-clé | Élément clé | Image mentale |. TEXTE : ${input}`;
-        else if (details.methodeMemo === 'crochets') userQuery = `Expert en mémorisation (crochets d'Hérigone 1=Pinceau...). Tableau Markdown : | N° & Crochet | Mot-clé | Élément clé | Image mentale |. TEXTE : ${input}`;
-        else userQuery = `Expert en mémorisation. Crée un système de balises émotionnelles. Tableau Markdown : | Point Clé | Émotion | Ancrage émotionnel |. TEXTE : ${input}`;
-        break;
-      default: userQuery = input;
-    }
-
-    const initialHistory = [{ role: "user", parts: [{ text: userQuery }] }];
-    setChatHistory(initialHistory);
-    callGemini(initialHistory, systemPrompt);
-  };
-
-  const handleRefine = () => {
-    if (!refineInput.trim()) return;
-    const systemPrompt = buildSystemPrompt();
-    
-    const newUserMessage = { 
-      role: "user", 
-      parts: [{ text: `CONSIGNE D'AFFINAGE : ${refineInput}. Réponds uniquement avec la nouvelle version du texte mis à jour, prêt à l'emploi, sans blabla d'introduction.` }] 
-    };
-    
-    const newHistory = [...chatHistory, newUserMessage];
-    setRefineInput('');
-    callGemini(newHistory, systemPrompt);
-  };
-
-  const copyToClipboard = () => {
-    const textArea = document.createElement("textarea");
-    textArea.value = result;
-    textArea.style.position = "fixed";
-    document.body.appendChild(textArea);
-    textArea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textArea);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2000);
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-    } catch (signOutErr) {
-      console.error("Erreur lors de la déconnexion", signOutErr);
-    }
-  };
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-[#e6eef6] flex items-center justify-center">
-        <Loader2 className="animate-spin text-[#0058be]" size={40} />
-      </div>
-    );
-  }
-
-  if (!sessionUser) {
-    return <Auth />;
-  }
-
-  if (sessionUser && (!profile || isEditingProfile)) {
-    return (
-      <Onboarding 
-        user={sessionUser} 
-        initialData={profile}
-        onComplete={(data) => {
-          setProfile(data);
-          setIsEditingProfile(false);
-        }} 
-      />
-    );
-  }
+  if (authLoading) return <div className="min-h-screen bg-[#e6eef6] flex justify-center items-center"><Loader2 className="animate-spin text-[#0058be]" size={40} /></div>;
+  if (!sessionUser) return <Auth />;
+  if (sessionUser && (!profile || isEditingProfile)) return <Onboarding user={sessionUser} initialData={profile} onComplete={(data) => { setProfile(data); setIsEditingProfile(false); }} />;
 
   return (
-    <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased relative">
+    <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col relative">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap');
         .serif-text { font-family: 'Newsreader', serif; }
@@ -293,287 +73,61 @@ const App = () => {
       {/* HEADER */}
       <header className="fixed top-0 left-0 w-full z-[100] flex justify-between items-center px-6 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100">
         <div className="flex items-center gap-3">
-          {(showResult || (activeTab !== 'home' && activeTab !== 'docs')) ? (
-            <button onClick={() => { 
-              if (showResult) {
-                setShowResult(false); 
-              } else {
-                setActiveTab('home');
-                setChatHistory([]);
-              }
-            }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full transition-all">
+          {activeTab !== 'home' ? (
+            <button onClick={() => setActiveTab('home')} className="p-2 -ml-2 hover:bg-slate-100 rounded-full">
               <ArrowLeft size={20} className="text-slate-900" />
             </button>
           ) : (
-            <img src="https://i.postimg.cc/k4v89QJf/logo_192.png" alt="Argumentis" className="w-8 h-8 rounded-lg shadow-sm object-cover bg-white" />
+            <img src="https://i.postimg.cc/k4v89QJf/logo_192.png" alt="Argumentis" className="w-8 h-8 rounded-lg shadow-sm" />
           )}
-          <h1 className="text-xl font-black tracking-tighter text-slate-900 uppercase sans-text">Argumentis</h1>
+          <h1 className="text-xl font-black tracking-tighter text-slate-900 uppercase">Argumentis</h1>
         </div>
         
         <div className="flex items-center gap-4">
-          <div 
-            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" 
-            onClick={() => setIsEditingProfile(true)}
-            title="Modifier mon profil"
-          >
-            <div className="hidden lg:flex flex-col items-end border-r border-slate-100 pr-4 text-right">
+          <div onClick={() => setIsEditingProfile(true)} className="flex items-center gap-3 cursor-pointer hover:opacity-80">
+            <div className="hidden lg:flex flex-col items-end border-r pr-4 text-right">
                <span className="text-[10px] font-black text-[#0058be] uppercase">{profile?.city || 'Espace Privé'}</span>
-               <span className="text-[11px] font-bold text-slate-700 truncate max-w-[12rem]">{profile?.role || 'Utilisateur'}</span>
+               <span className="text-[11px] font-bold text-slate-700">{profile?.role || 'Utilisateur'}</span>
             </div>
             <UserCircle size={28} className="text-[#0058be]" />
           </div>
-          
-          <button onClick={handleSignOut} className="text-slate-400 hover:text-red-500 transition-colors ml-2" title="Se déconnecter">
-            <LogOut size={20} />
-          </button>
+          <button onClick={handleSignOut} className="text-slate-400 hover:text-red-500 ml-2"><LogOut size={20} /></button>
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
-      <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 ${showResult ? 'max-w-5xl' : 'max-w-xl md:max-w-3xl'}`}>
+      {/* MAIN */}
+      <main className="pt-20 px-6 mx-auto w-full max-w-3xl pb-40">
+        {activeTab === 'home' && <Dashboard profile={profile} setActiveTab={setActiveTab} setShowLegal={setShowLegal} />}
         
-        {/* DASHBOARD */}
-        {!showResult && activeTab === 'home' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <section className="mt-6 mb-12">
-              <p className="text-[10px] font-black text-[#0058be] uppercase tracking-[0.3em] mb-3">Tableau de bord</p>
-              <h2 className="serif-text text-4xl font-light text-[#091426] leading-tight">Bonjour, <span className="font-semibold italic text-[#0058be]">{profile?.firstName || 'vous'}</span></h2>
-              <p className="text-slate-500 mt-2 font-medium text-lg">Assistant d'argumentation pour les décideurs</p>
-            </section>
-            <section className="grid grid-cols-2 lg:grid-cols-3 gap-5">
-              {modules.map((m) => (
-                <button key={m.id} onClick={() => { setActiveTab(m.id); setChatHistory([]); }} className="flex flex-col items-start p-6 bg-white rounded-3xl transition-all active:scale-95 shadow-[0_4px_25px_rgba(0,0,0,0.03)] border border-slate-50 text-left hover:border-blue-100 hover:shadow-xl">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mb-4"><span className="text-[#091426]">{m.icon}</span></div>
-                  <span className="font-bold text-[#091426] text-sm tracking-tight leading-none">{m.label}</span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase mt-2 leading-tight">{m.sub}</span>
-                </button>
-              ))}
-            </section>
-
-            <div className="mt-16 text-center pb-8">
-              <button onClick={() => setShowLegal(true)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors underline decoration-slate-200 underline-offset-4">
-                Mentions légales &amp; Politique de confidentialité
-              </button>
-            </div>
-          </div>
+        {activeTab === 'docs' && (
+          <KnowledgeBase docs={docs} isAddingDoc={isAddingDoc} setIsAddingDoc={setIsAddingDoc} newDoc={newDoc} setNewDoc={setNewDoc} 
+            handleSaveDoc={async () => {
+              if(!newDoc.title) return;
+              await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents'), { ...newDoc, createdAt: Date.now() });
+              setIsAddingDoc(false); setNewDoc({ title: '', category: 'Référence', content: '' });
+            }} 
+            handleDeleteDoc={(id) => deleteDoc(firestoreDoc(db, 'artifacts', APP_NAMESPACE, 'users', sessionUser.uid, 'documents', id))} 
+          />
         )}
-
-        {/* FORMS */}
-        {!showResult && activeTab !== 'home' && activeTab !== 'docs' && (
-          <div className="animate-in fade-in slide-in-from-right-10 duration-500">
-            <header className="mb-10 flex justify-between items-end">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#0058be] mb-2">Rédaction Stratégique</p>
-                <h2 className="serif-text text-4xl font-light text-[#091426] italic leading-tight">{modules.find(m => m.id === activeTab)?.label}</h2>
-              </div>
-              {docs.length > 0 && (
-                <select value={selectedDocId} onChange={e => setSelectedDocId(e.target.value)} className="hidden sm:block bg-white border border-slate-100 text-slate-600 text-xs font-bold rounded-xl px-4 py-2 shadow-sm">
-                  <option value="">Aucun document lié</option>
-                  {docs.map(d => <option key={d.id} value={d.id}>📘 {d.title}</option>)}
-                </select>
-              )}
-            </header>
-
-            <section className="space-y-8">
-              <div className="bg-[#f0f4f8] rounded-[2.5rem] p-8 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  
-                  {activeTab === 'discours' && (
-                    <>
-                      <div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Durée cible</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.duree} onChange={e => setDetails({...details, duree: e.target.value})} placeholder="Ex: 5 minutes" /></div>
-                      <div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Auditoire</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.cible} onChange={e => setDetails({...details, cible: e.target.value})} placeholder="Ex: Citoyens, Partenaires..." /></div>
-                    </>
-                  )}
-
-                  {activeTab === 'social' && (
-                    <div className="md:col-span-2 space-y-4">
-                      <label className="text-[10px] font-black text-slate-500 uppercase px-1 text-center block">Plateforme</label>
-                      <div className="flex gap-2">
-                        {socialPlatforms.map(plat => (
-                          <button key={plat} onClick={() => setDetails({...details, plateforme: plat})} className={`flex-1 p-4 rounded-2xl border flex flex-col items-center ${details.plateforme === plat ? 'bg-[#091426] text-white shadow-lg' : 'bg-white text-slate-400'}`}>
-                            {plat === 'LinkedIn' && <Linkedin size={20} />} {plat === 'X' && <Twitter size={20} />} {plat === 'Facebook' && <Facebook size={20} />} {plat === 'Instagram' && <Instagram size={20} />}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'memoriser' && (
-                    <div className="md:col-span-2 space-y-4">
-                      <label className="text-[10px] font-black text-slate-500 uppercase px-1 text-center block">Technique d'ancrage</label>
-                      <div className="flex gap-2">
-                        {memoTechniques.map(tech => (
-                          <button key={tech.id} onClick={() => setDetails({...details, methodeMemo: tech.id})} className={`flex-1 flex flex-col items-center p-4 rounded-2xl ${details.methodeMemo === tech.id ? 'bg-[#091426] text-white' : 'bg-white text-slate-400'}`}>
-                            {tech.icon} <span className="text-[9px] font-black uppercase mt-2">{tech.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(activeTab === 'argumentaire' || activeTab === 'mail') && (
-                    <div className="md:col-span-1 space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase px-1">Interlocuteur</label><input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.interlocuteur} onChange={e => setDetails({...details, interlocuteur: e.target.value})} placeholder="Ex: Préfet, Directeur..." /></div>
-                  )}
-
-                  {activeTab !== 'memoriser' && (
-                    <div className={`space-y-2 ${activeTab === 'social' ? 'md:col-span-2' : 'md:col-span-1'}`}>
-                      <label className="text-[10px] font-black text-slate-500 uppercase px-1">Objectif & Ton</label>
-                      <input className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" value={details.objectif} onChange={e => setDetails({...details, objectif: e.target.value})} placeholder="Ex: Convaincre, Informer, Fédérer..." />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="bg-white rounded-[2.5rem] p-10 shadow-[0_20px_60px_rgba(9,20,38,0.05)] relative overflow-hidden">
-                  <textarea className="w-full bg-transparent border-none p-0 focus:ring-0 text-xl serif-text italic resize-none min-h-[250px]" placeholder="Texte source, notes en vrac ou message principal..." value={input} onChange={(e) => setInput(e.target.value)} />
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                <button 
-                  onClick={() => setShowRef(!showRef)}
-                  className="flex items-center gap-2 text-sm font-bold text-[#0058be] hover:text-blue-800 transition-colors"
-                >
-                  <Paperclip size={18} />
-                  {showRef ? 'Masquer le texte de référence' : 'Joindre un texte de référence (Modèle, Contexte...)'}
-                </button>
-
-                {showRef && (
-                  <div className="bg-[#f0f4f8] rounded-[2.5rem] p-8 shadow-inner border border-slate-100 animate-in fade-in slide-in-from-top-2">
-                     <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-3">
-                          <BookOpen size={18} className="text-[#0058be]" />
-                          <h3 className="text-xs font-black text-[#091426] uppercase tracking-widest">Matériau Source</h3>
-                        </div>
-                        
-                        <label className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${isReadingPdf ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'text-[#0058be] bg-blue-50 hover:bg-blue-100 border-blue-100'}`}>
-                          {isReadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} 
-                          {isReadingPdf ? 'Lecture...' : 'Importer (PDF, TXT)'}
-                          <input type="file" accept=".pdf,.txt,.md,.csv" className="hidden" onChange={handleRefFileUpload} disabled={isReadingPdf} />
-                        </label>
-                     </div>
-                     <textarea 
-                        className="w-full bg-transparent border-none p-0 focus:ring-0 text-base sans-text font-medium leading-relaxed resize-y text-slate-700 min-h-[120px] placeholder:text-slate-400" 
-                        placeholder="Collez ici un discours précédent pour en imiter le style, ou importez un fichier..."
-                        value={referenceText}
-                        onChange={(e) => setReferenceText(e.target.value)}
-                     />
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <div className="mt-12 mb-20">
-              <button onClick={handleGenerate} disabled={loading || !input} className="w-full bg-[#0058be] text-white rounded-full py-5 px-8 flex items-center justify-center gap-4 hover:scale-[1.02] disabled:opacity-30">
-                {loading ? <Loader2 className="animate-spin" size={24} /> : <Send size={24} />}
-                <span className="font-black tracking-widest uppercase text-sm">Lancer l'assistant IA</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* RESULTS */}
-        {showResult && (
-          <div className="animate-in fade-in pb-20">
-            <section className="bg-[#091426] rounded-[2.5rem] p-10 mb-10 relative overflow-hidden">
-              <div className="relative z-10">
-                <div className="flex justify-between items-center mb-8">
-                  <span className="bg-blue-500/20 text-blue-200 px-4 py-1.5 rounded-full text-[10px] font-black uppercase border border-white/5">Résultat Généré</span>
-                  <div className="flex gap-3">
-                    <button onClick={() => setShowRaw(!showRaw)} className="bg-white/10 text-white px-5 py-3 rounded-full"><Code size={18} /></button>
-                    <button onClick={copyToClipboard} className="bg-white text-[#091426] flex items-center gap-2 px-6 py-3 rounded-full">{copySuccess ? <Check size={18} /> : <Copy size={18} />}</button>
-                  </div>
-                </div>
-                <h1 className="text-3xl font-light text-white serif-text italic">Projet Finalisé</h1>
-              </div>
-            </section>
-            
-            <article className="bg-white rounded-[2.5rem] p-10 md:p-24 shadow-[0_40px_100px_rgba(9,20,38,0.08)] min-h-[800px] relative mb-12 overflow-hidden flex flex-col">
-              <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]"></div>
-              
-              <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10">
-                <div className="sans-text">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300 mb-2">Génération Argumentis</p>
-                  <p className="text-base font-black text-[#091426] uppercase leading-none mb-1">{profile?.city ? `Administration de ${profile.city}` : 'Espace Argumentis'}</p>
-                  <p className="text-sm font-bold text-slate-400 italic leading-none">{profile?.role || ''}</p>
-                </div>
-                <div className="text-right sans-text relative z-10"><p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
-              </div>
-
-              <div className="relative z-10 flex-grow">
-                {showRaw ? (
-                  <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans p-8 bg-slate-50 rounded-2xl border border-slate-100">{result}</pre>
-                ) : (
-                  formatResult(result)
-                )}
-              </div>
-
-              {/* MODULE D'AFFINAGE CONVERSATIONNEL */}
-              <div className="mt-12 pt-8 border-t border-slate-100 relative z-10">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-                   <Target size={14} /> Affiner ce résultat (L'IA mémorise vos échanges)
-                </p>
-                <div className="flex gap-3">
-                  <input 
-                    type="text" 
-                    value={refineInput} 
-                    onChange={e => setRefineInput(e.target.value)} 
-                    placeholder="Ex: Raccourcis le texte, adopte un ton plus formel, ajoute une conclusion..." 
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-medium focus:ring-2 focus:ring-[#0058be]/20 shadow-inner"
-                    onKeyDown={e => { if(e.key === 'Enter') handleRefine() }}
-                    disabled={loading}
-                  />
-                  <button 
-                    onClick={handleRefine} 
-                    disabled={loading || !refineInput.trim()} 
-                    className="bg-[#0058be] text-white px-6 rounded-2xl flex items-center justify-center hover:bg-blue-800 transition-colors shadow-lg disabled:opacity-50"
-                  >
-                    {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-16 pt-12 border-t border-slate-50 flex flex-col items-end relative z-10">
-                <div className="text-right">
-                  <div className="w-40 h-20 mb-3 opacity-[0.05] flex items-center justify-end grayscale"><Building2 size={80} /></div>
-                  <p className="serif-text font-bold text-2xl text-[#091426] italic leading-none mb-1">{profile?.role || ''}</p>
-                  <p className="sans-text text-[11px] text-slate-400 font-black uppercase tracking-widest">{profile?.city ? `Territoire de ${profile.city}` : ''}</p>
-                </div>
-              </div>
-            </article>
-          </div>
-        )}
-
-        {/* KNOWLEDGE BASE MODULE */}
-        {!showResult && activeTab === 'docs' && (
-          <KnowledgeBase docs={docs} isAddingDoc={isAddingDoc} setIsAddingDoc={setIsAddingDoc} newDoc={newDoc} setNewDoc={setNewDoc} handleSaveDoc={handleSaveDoc} handleDeleteDoc={handleDeleteDoc} />
-        )}
+        
+        {activeTab !== 'home' && activeTab !== 'docs' && <Generator activeTab={activeTab} profile={profile} docs={docs} />}
       </main>
 
       {/* BOTTOM NAV */}
-      {!showResult && (
-        <nav className="fixed bottom-0 left-0 w-full flex justify-around p-4 bg-white/90 backdrop-blur-xl rounded-t-[3rem] shadow-lg border-t border-slate-50 z-[100]">
-          <button onClick={() => { setActiveTab('home'); setInput(''); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
-          <button onClick={() => { setActiveTab('discours'); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
-          <button onClick={() => { setActiveTab('docs'); setChatHistory([]); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
-        </nav>
-      )}
+      <nav className="fixed bottom-0 left-0 w-full flex justify-around p-4 bg-white/90 backdrop-blur-xl rounded-t-[3rem] shadow-lg border-t border-slate-50 z-[100]">
+        <button onClick={() => setActiveTab('home')} className={`p-4 rounded-2xl ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
+        <button onClick={() => setActiveTab('docs')} className={`p-4 rounded-2xl ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
+      </nav>
 
-      {/* MODALE MENTIONS LÉGALES */}
+      {/* LEGAL MODAL */}
       {showLegal && (
-        <div className="fixed inset-0 z-[200] bg-[#091426]/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-            <h2 className="text-2xl font-black text-[#091426] mb-6 serif-text">Mentions Légales</h2>
+        <div className="fixed inset-0 z-[200] bg-[#091426]/40 flex items-center justify-center p-4" onClick={() => setShowLegal(false)}>
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full" onClick={e=>e.stopPropagation()}>
+            <h2 className="text-2xl font-black mb-6">Mentions Légales</h2>
             <div className="space-y-4 text-sm text-slate-600 h-64 overflow-y-auto pr-2">
-              <p><strong>Éditeur de l'application :</strong> Argumentis</p>
-              <p><strong>Hébergement :</strong> Firebase (Google LLC), hébergé en Europe.</p>
-              <p><strong>Propriété intellectuelle :</strong> Le contenu généré et la structure de l'application sont protégés par les lois en vigueur sur la propriété intellectuelle.</p>
-              <p><strong>Confidentialité &amp; RGPD :</strong> Vos données de profil et vos documents sont stockés de manière sécurisée et chiffrée. Ils ne sont utilisés que pour la génération de vos textes par l'IA et ne sont pas partagés à des tiers à des fins commerciales. Vous disposez d'un droit d'accès, de modification et de suppression de vos données directement depuis votre espace profil.</p>
+              <p>Éditeur : Argumentis</p><p>Hébergement : Firebase (Europe)</p>
             </div>
-            <button onClick={() => setShowLegal(false)} className="mt-8 w-full bg-[#0058be] text-white font-bold py-4 rounded-2xl hover:bg-blue-800 transition-colors">
-              Fermer
-            </button>
+            <button onClick={() => setShowLegal(false)} className="mt-8 w-full bg-[#0058be] text-white py-4 rounded-2xl">Fermer</button>
           </div>
         </div>
       )}
