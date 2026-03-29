@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
-import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+// ALIAS : on renomme 'doc' en 'firestoreDoc' pour éviter le conflit avec les variables locales
+import { collection, onSnapshot, addDoc, deleteDoc, doc as firestoreDoc, getDoc } from 'firebase/firestore';
 import { 
   PenTool, MessageSquare, Share2, ShieldCheck, Copy, Loader2, Building2, 
   BookOpen, Send, Target, UserCircle, LogOut, Upload,
-  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User, Paperclip
+  Home, Folder, ArrowLeft, Check, Linkedin, Twitter, Facebook, Instagram, Mail as MailIcon, Code, Brain, ListOrdered, User as UserIcon, Paperclip
 } from 'lucide-react';
 
-// Imports des fichiers refactorisés
 import { auth, db, APP_NAMESPACE, VITE_GEMINI_API_KEY } from './config/firebase';
 import { formatResult } from './utils/formatters';
 import { KnowledgeBase } from './components/KnowledgeBase';
@@ -29,7 +29,7 @@ const App = () => {
   const [isReadingPdf, setIsReadingPdf] = useState(false);
   const [result, setResult] = useState('');
 
-  // --- NOUVEAUX ÉTATS POUR LA MÉMORISATION ---
+  // États pour la mémorisation
   const [chatHistory, setChatHistory] = useState([]);
   const [refineInput, setRefineInput] = useState('');
 
@@ -47,13 +47,13 @@ const App = () => {
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
 
-  // Authentification et récupération du profil
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         try {
-          const docRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
+          // Utilisation du nouvel alias firestoreDoc
+          const docRef = firestoreDoc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists() && docSnap.data().profile) {
             setProfile(docSnap.data().profile);
@@ -71,22 +71,28 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // Synchronisation de la base de documents
   useEffect(() => {
     if (!user || !profile) return;
+    
+    // CORRECTIF BUILD : déclaration de la variable hors du bloc try pour ne pas perturber Rollup
+    let unsubscribe; 
+    
     try {
       const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
-      const unsubscribe = onSnapshot(docsRef, (snapshot) => {
-        // CORRECTION DU BUG DE BUILD CONSERVÉE : "docItem"
+      unsubscribe = onSnapshot(docsRef, (snapshot) => {
+        // Utilisation de docItem pour éviter le shadowing
         const fetchedDocs = snapshot.docs.map(docItem => ({ id: docItem.id, ...docItem.data() }));
         fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setDocs(fetchedDocs);
         setSelectedDocId(prev => (fetchedDocs.length > 0 && !prev) ? fetchedDocs[0].id : prev);
       });
-      return () => unsubscribe();
     } catch (err) {
       console.error("Erreur Firestore:", err);
     }
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [user, profile]);
 
   const modules = [
@@ -109,7 +115,7 @@ const App = () => {
 
   const handleDeleteDoc = async (docId) => {
     if (!user) return;
-    await deleteDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', docId));
+    await deleteDoc(firestoreDoc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', docId));
     setSelectedDocId(prev => prev === docId ? '' : prev);
   };
 
@@ -143,7 +149,6 @@ const App = () => {
     }
   };
 
-  // --- FONCTION DE CONSTRUCTION DU PROMPT SYSTÈME ---
   const buildSystemPrompt = () => {
     const activeDoc = docs.find(d => d.id === selectedDocId);
     let systemPrompt = `Tu es Argumentis, la plume et l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
@@ -167,7 +172,6 @@ const App = () => {
     return systemPrompt;
   };
 
-  // --- APPEL API MODIFIÉ POUR ACCEPTER L'HISTORIQUE ---
   const callGemini = async (historyParams, systemInstruction) => {
     setLoading(true);
     try {
@@ -185,7 +189,6 @@ const App = () => {
       const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
       
       setResult(cleanText);
-      // On mémorise la réponse de l'IA pour la suite
       setChatHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
     } catch (error) {
       setResult(`⚠️ Erreur : ${error.message}\nVérifiez vos variables d'environnement et votre clé API.`);
@@ -194,7 +197,6 @@ const App = () => {
     setLoading(false);
   };
 
-  // --- GÉNÉRATION INITIALE ---
   const handleGenerate = () => {
     const systemPrompt = buildSystemPrompt();
     let userQuery = "";
@@ -212,18 +214,15 @@ const App = () => {
       default: userQuery = input;
     }
 
-    // Initialisation du nouvel historique
     const initialHistory = [{ role: "user", parts: [{ text: userQuery }] }];
     setChatHistory(initialHistory);
     callGemini(initialHistory, systemPrompt);
   };
 
-  // --- AFFINAGE (MÉMORISATION) ---
   const handleRefine = () => {
     if (!refineInput.trim()) return;
     const systemPrompt = buildSystemPrompt();
     
-    // On ajoute la requête d'affinage à l'historique
     const newUserMessage = { 
       role: "user", 
       parts: [{ text: `CONSIGNE D'AFFINAGE : ${refineInput}. Réponds uniquement avec la nouvelle version du texte mis à jour, prêt à l'emploi, sans blabla d'introduction.` }] 
@@ -296,7 +295,7 @@ const App = () => {
                 setShowResult(false); 
               } else {
                 setActiveTab('home');
-                setChatHistory([]); // Reset historique
+                setChatHistory([]);
               }
             }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full transition-all">
               <ArrowLeft size={20} className="text-slate-900" />
@@ -399,7 +398,7 @@ const App = () => {
                     <div className="md:col-span-2 space-y-4">
                       <label className="text-[10px] font-black text-slate-500 uppercase px-1 text-center block">Technique d'ancrage</label>
                       <div className="flex gap-2">
-                        {[ { id: 'crochets', label: 'Crochets', icon: <ListOrdered size={20} /> }, { id: 'corps', label: 'Loci Corporel', icon: <User size={20} /> }, { id: 'balises', label: 'Balises', icon: <Target size={20} /> } ].map(tech => (
+                        {[ { id: 'crochets', label: 'Crochets', icon: <ListOrdered size={20} /> }, { id: 'corps', label: 'Loci Corporel', icon: <UserIcon size={20} /> }, { id: 'balises', label: 'Balises', icon: <Target size={20} /> } ].map(tech => (
                           <button key={tech.id} onClick={() => setDetails({...details, methodeMemo: tech.id})} className={`flex-1 flex flex-col items-center p-4 rounded-2xl ${details.methodeMemo === tech.id ? 'bg-[#091426] text-white' : 'bg-white text-slate-400'}`}>
                             {tech.icon} <span className="text-[9px] font-black uppercase mt-2">{tech.label}</span>
                           </button>
@@ -506,7 +505,7 @@ const App = () => {
                 )}
               </div>
 
-              {/* NOUVEAU MODULE D'AFFINAGE CONVERSATIONNEL */}
+              {/* MODULE D'AFFINAGE CONVERSATIONNEL */}
               <div className="mt-12 pt-8 border-t border-slate-100 relative z-10">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
                    <Target size={14} /> Affiner ce résultat (L'IA mémorise vos échanges)
