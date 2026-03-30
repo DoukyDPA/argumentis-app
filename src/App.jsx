@@ -99,9 +99,40 @@ const App = () => {
   };
 
   const handleGenerate = () => {
-    const system = buildSystemPrompt();
-    let query = `RÉDIGE UN ${activeTab.toUpperCase()}. SUJET : ${input}. DETAILS : ${JSON.stringify(details)}`;
-    callGemini([...chatHistory, { role: "user", parts: [{ text: query }] }], system);
+    const systemPrompt = buildSystemPrompt();
+    let userQuery = "";
+    
+    switch(activeTab) {
+      case 'discours': 
+        userQuery = `RÉDIGE UN DISCOURS PUBLIC. DURÉE : ${details.duree || '5 min'}. PUBLIC : ${details.cible}. OBJECTIF : ${details.objectif}. SUJET : ${input}.`; 
+        break;
+      case 'langage': 
+        userQuery = `RÉDIGE UNE FICHE DE LANGAGE. Inclus : Miroir, Mots Totémiques. CONSIGNE : ${details.objectif}. SUJET : ${input}.`; 
+        break;
+      case 'argumentaire': 
+        userQuery = `RÉDIGE UNE NOTE DE SYNTHÈSE FACTUELLE. INTERLOCUTEUR : ${details.interlocuteur}. FOND : ${input}.`; 
+        break;
+      case 'mail': 
+        userQuery = `RÉDIGE UN COURRIEL PERSONNALISÉ. INTERLOCUTEUR : ${details.interlocuteur}. OBJECTIF : ${details.objectif}. CONTEXTE : ${input}.`; 
+        break;
+      case 'social': 
+        userQuery = `RÉDIGE UNE PUBLICATION POUR ${details.plateforme}. TON : ${details.objectif}. SUJET : ${input}.`; 
+        break;
+      case 'memoriser':
+        if (details.methodeMemo === 'corps') {
+          userQuery = `Expert en mémorisation (méthode loci corporelle). Crée un tableau Markdown : | Partie du corps | Mot-clé | Élément clé | Image mentale |. TEXTE : ${input}`;
+        } else if (details.methodeMemo === 'crochets') {
+          userQuery = `Expert en mémorisation (crochets d'Hérigone 1=Pinceau...). Tableau Markdown : | N° & Crochet | Mot-clé | Élément clé | Image mentale |. TEXTE : ${input}`;
+        } else {
+          userQuery = `Expert en mémorisation. Crée un système de balises émotionnelles. Tableau Markdown : | Point Clé | Émotion | Ancrage émotionnel |. TEXTE : ${input}`;
+        }
+        break;
+      default: 
+        userQuery = input;
+    }
+
+    const newHistory = [...chatHistory, { role: "user", parts: [{ text: userQuery }] }];
+    callGemini(newHistory, systemPrompt);
   };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-[#e6eef6]"><Loader2 className="animate-spin text-[#0058be]" /></div>;
