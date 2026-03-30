@@ -1,4 +1,4 @@
-import React from 'react';
+$import React from 'react';
 import { 
   BookOpen, Send, Target, Upload, Loader2, 
   Linkedin, Twitter, Facebook, Instagram, 
@@ -103,10 +103,26 @@ export const GenerationForm = ({
             {activeTab === 'memoriser' && (
               <div className="md:col-span-2 space-y-4">
                 <label className="text-[10px] font-black text-slate-500 uppercase px-1 text-center block">Technique d'ancrage</label>
-                <div className="flex gap-2">
-                  {[ { id: 'crochets', label: 'Crochets', icon: <ListOrdered size={20} /> }, { id: 'corps', label: 'Loci Corporel', icon: <User size={20} /> }, { id: 'balises', label: 'Balises', icon: <Target size={20} /> } ].map(tech => (
-                    <button key={tech.id} onClick={() => setDetails({...details, methodeMemo: tech.id})} className={`flex-1 flex flex-col items-center p-4 rounded-2xl transition-colors ${details.methodeMemo === tech.id ? 'bg-[#091426] text-white' : 'bg-white text-slate-400'}`}>
-                      {tech.icon} <span className="text-[9px] font-black uppercase mt-2">{tech.label}</span>
+                <div className="flex gap-3">
+                  {[ 
+                    { id: 'crochets', label: 'Crochets', desc: 'Chiffres-images pour listes', icon: <ListOrdered size={20} /> }, 
+                    { id: 'corps', label: 'Loci Corporel', desc: 'Associer des idées au corps', icon: <User size={20} /> }, 
+                    { id: 'balises', label: 'Balises', desc: 'Ancrage par les émotions', icon: <Target size={20} /> } 
+                  ].map(tech => (
+                    <button 
+                      key={tech.id} 
+                      onClick={() => setDetails({...details, methodeMemo: tech.id})} 
+                      className={`flex-1 flex flex-col items-center text-center p-4 rounded-2xl transition-all border ${
+                        details.methodeMemo === tech.id 
+                          ? 'bg-[#091426] text-white border-[#091426] shadow-md' 
+                          : 'bg-white text-slate-500 border-slate-100 hover:border-blue-200'
+                      }`}
+                    >
+                      {tech.icon} 
+                      <span className="text-[10px] font-black uppercase mt-3 mb-1">{tech.label}</span>
+                      <span className={`text-[9px] leading-tight ${details.methodeMemo === tech.id ? 'text-slate-300' : 'text-slate-400'}`}>
+                        {tech.desc}
+                      </span>
                     </button>
                   ))}
                 </div>
