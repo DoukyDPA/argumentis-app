@@ -33,6 +33,8 @@ const App = () => {
   const [docs, setDocs] = useState([]);
   const [selectedDocIds, setSelectedDocIds] = useState([]); // Multiple sélection
   const [archives, setArchives] = useState([]); // Les 10 archives
+  const [isAddingDoc, setIsAddingDoc] = useState(false);
+  const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
