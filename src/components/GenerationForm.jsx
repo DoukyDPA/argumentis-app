@@ -1,4 +1,4 @@
-$import React from 'react';
+import React from 'react';
 import { 
   BookOpen, Send, Target, Upload, Loader2, 
   Linkedin, Twitter, Facebook, Instagram, 
