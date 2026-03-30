@@ -9,7 +9,7 @@ import { auth, db, APP_NAMESPACE } from './config/firebase';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
 import { Auth } from './components/Auth'; 
-import { Dashboard } from './components/Dashboard';
+import { Dashboard, modules } from './components/Dashboard';
 import { ResultView } from './components/ResultView';
 import { GenerationForm } from './components/GenerationForm';
 import { extractTextFromPdf } from './utils/pdfHelper'; 
@@ -41,33 +41,30 @@ const App = () => {
   const [isEditingProfile, setIsEditingProfile] = useState(false); 
 
   const [docs, setDocs] = useState([]);
-  const [selectedDocId, setSelectedDocId] = useState('');
+  const [selectedDocIds, setSelectedDocIds] = useState([]); // Changé pour sélection multiple
+  const [archives, setArchives] = useState([]); // Nouvel état pour les archives
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
 
-  // 1. Initialisation : Chargement de l'utilisateur, du profil ET de la mémoire
+  // 1. Initialisation : Utilisateur, Profil et Mémoire
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         try {
-          // Chargement du profil
           const docRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists() && docSnap.data().profile) {
             setProfile(docSnap.data().profile);
-          } else {
-             setProfile(null); 
           }
 
-          // Chargement de l'historique de conversation (Mémoire IA)
           const historyRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid, 'context', 'history');
           const historySnap = await getDoc(historyRef);
           if (historySnap.exists() && historySnap.data().messages) {
             setChatHistory(historySnap.data().messages);
           }
         } catch (err) {
-          console.error("Erreur d'initialisation (profil/historique) :", err);
+          console.error("Erreur d'initialisation :", err);
         }
       } else {
          setProfile(null);
@@ -81,33 +78,37 @@ const App = () => {
   // 2. Chargement de la Base de Savoir
   useEffect(() => {
     if (!user || !profile) return;
-    try {
-      const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
-      const unsubscribe = onSnapshot(docsRef, (snapshot) => {
-        const fetchedDocs = snapshot.docs.map(dItem => ({ id: dItem.id, ...dItem.data() }));
-        fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setDocs(fetchedDocs);
-        setSelectedDocId(prev => (fetchedDocs.length > 0 && !prev) ? fetchedDocs[0].id : prev);
-      });
-      return () => unsubscribe();
-    } catch (err) {
-      console.error("Erreur Firestore :", err);
-    }
+    const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
+    const unsubscribe = onSnapshot(docsRef, (snapshot) => {
+      const fetchedDocs = snapshot.docs.map(dItem => ({ id: dItem.id, ...dItem.data() }));
+      fetchedDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setDocs(fetchedDocs);
+    });
+    return () => unsubscribe();
   }, [user, profile]);
 
-  // --- FONCTION CLÉ : Gestion de la mémoire persistante ---
+  // 3. Chargement des Archives (10 derniers textes)
+  useEffect(() => {
+    if (!user) return;
+    const archivesRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives');
+    const unsubscribe = onSnapshot(archivesRef, (snapshot) => {
+      const fetchedArchives = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      fetchedArchives.sort((a, b) => b.createdAt - a.createdAt);
+      setArchives(fetchedArchives.slice(0, 10));
+    });
+    return () => unsubscribe();
+  }, [user]);
+
   const updateAndSaveHistory = async (newHistory) => {
-    // On conserve uniquement les 10 derniers échanges pour ne pas surcharger le contexte
     const limitedHistory = newHistory.slice(-10);
     setChatHistory(limitedHistory); 
-    
     if (user) {
       try {
         await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'context', 'history'), {
           messages: limitedHistory
         }, { merge: true });
       } catch (err) {
-        console.error("Erreur de sauvegarde de la mémoire IA :", err);
+        console.error("Erreur sauvegarde mémoire :", err);
       }
     }
   };
@@ -124,87 +125,82 @@ const App = () => {
   const handleDeleteDoc = async (docId) => {
     if (!user) return;
     await deleteDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', docId));
-    setSelectedDocId(prev => prev === docId ? '' : prev);
+    setSelectedDocIds(prev => prev.filter(id => id !== docId));
   };
 
   const handleRefFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert("⚠️ Le fichier est trop volumineux (limite : 5 Mo).");
-      return;
-    }
-    
     setIsReadingPdf(true);
     try {
       let extractedText = '';
-      if (file.type === 'application/pdf') {
-        extractedText = await extractTextFromPdf(file);
-      } else {
-        extractedText = await new Promise((resolve, reject) => {
+      if (file.type === 'application/pdf') extractedText = await extractTextFromPdf(file);
+      else {
+        extractedText = await new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (event) => resolve(event.target.result);
-          reader.onerror = (error) => reject(error);
           reader.readAsText(file);
         });
       }
       setReferenceText(prev => prev ? prev + "\n\n" + extractedText : extractedText);
     } catch (error) {
-      alert("Erreur lors de la lecture du fichier.");
+      alert("Erreur de lecture.");
     } finally {
       setIsReadingPdf(false);
-      e.target.value = null;
     }
   };
 
+  // MODIFICATION : Intégration de la Base de Savoir ponctuelle
   const buildSystemPrompt = () => {
-    const activeDoc = docs.find(d => d.id === selectedDocId);
-    let systemPrompt = `Tu es Argumentis, la plume et l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
+    const activeDocs = docs.filter(d => selectedDocIds.includes(d.id));
+    let systemPrompt = `Tu es Argumentis, l'assistant de rédaction expert de ${profile?.firstName || "l'utilisateur"}. `;
     
     if (profile?.role || profile?.city) {
-      systemPrompt += `Il exerce la fonction de ${profile?.role || 'professionnel'} ${profile?.city ? `à ${profile?.city}` : ''}. `;
+      systemPrompt += `Il est ${profile?.role || 'élu'} ${profile?.city ? `à ${profile?.city}` : ''}. `;
     }
     if (profile?.orientation) {
-      systemPrompt += `Sa ligne directrice et sa sensibilité politique/associative sont : ${profile.orientation}. `;
+      systemPrompt += `Sensibilité : ${profile.orientation}. `;
     }
 
-    systemPrompt += `\nDIRECTIVES STRICTES DE PERSONNIFICATION :
-- Tu dois IMPÉRATIVEMENT adapter le fond (priorités thématiques, arguments) et la forme (ton, champ lexical) pour qu'ils reflètent exactement son rôle et son bord politique ou idéologique. 
-- Incarne cette nuance : un élu de gauche, un maire de droite, ou un dirigeant d'association s'expriment différemment et ne défendent pas les mêmes piliers stratégiques. Tes propositions doivent être calibrées sur MESURE.
-- Le ton doit être institutionnel, élégant mais accessible et tourné vers l'action.
-- Évite le jargon complexe.`;
+    if (activeDocs.length > 0) {
+      systemPrompt += `\n\nCONNAISSANCES DE RÉFÉRENCE (BASE DE SAVOIR) :`;
+      activeDocs.forEach(doc => {
+        systemPrompt += `\n- ${doc.title} : ${doc.content}`;
+      });
+    }
 
-    if (activeDoc) systemPrompt += `\nCONTEXTE PRIORITAIRE ("${activeDoc.title}") : "${activeDoc.content}"`;
-    if (referenceText) systemPrompt += `\n\nMATÉRIAU SOURCE :\n"""\n${referenceText}\n"""\nINSTRUCTION : Prends impérativement en compte ce texte.`;
+    systemPrompt += `\n\nDIRECTIVES : Ton institutionnel, élégant, calibré sur le profil ci-dessus.`;
+    if (referenceText) systemPrompt += `\n\nMATÉRIAU SOURCE :\n${referenceText}`;
     
     return systemPrompt;
   };
 
-  // --- APPEL API SÉCURISÉ VIA LE BACKEND VERCEL ---
   const callGemini = async (historyParams, systemInstruction) => {
     setLoading(true);
     try {
       const response = await fetch('/api/gemini', {        
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          historyParams,
-          systemInstruction
-        })
+        body: JSON.stringify({ historyParams, systemInstruction })
       });
-      
-      if (!response.ok) throw new Error(`Erreur serveur (${response.status})`);
       
       const data = await response.json();
       let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
       const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
       
       setResult(cleanText);
-      // On sauvegarde la réponse de l'IA dans l'historique
-      const finalHistory = [...historyParams, { role: "model", parts: [{ text: cleanText }] }];
-      updateAndSaveHistory(finalHistory);
+      updateAndSaveHistory([...historyParams, { role: "model", parts: [{ text: cleanText }] }]);
+
+      // ARCHIVAGE : Sauvegarde du texte produit
+      if (user) {
+        await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives'), {
+          content: cleanText,
+          type: activeTab,
+          createdAt: Date.now()
+        });
+      }
     } catch (error) {
-      setResult(`⚠️ Erreur : ${error.message}\nL'API interne n'a pas pu répondre.`);
+      setResult(`⚠️ Erreur : ${error.message}`);
     }
     setShowResult(true);
     setLoading(false);
@@ -214,89 +210,42 @@ const App = () => {
     const systemPrompt = buildSystemPrompt();
     let userQuery = "";
     switch(activeTab) {
-      case 'discours': userQuery = `RÉDIGE UN DISCOURS PUBLIC. DURÉE : ${details.duree || '5 min'}. PUBLIC : ${details.cible}. OBJECTIF : ${details.objectif}. SUJET : ${input}.`; break;
-      case 'langage': userQuery = `RÉDIGE UNE FICHE DE LANGAGE. Inclus : Miroir, Mots Totémiques. CONSIGNE : ${details.objectif}. SUJET : ${input}.`; break;
-      case 'argumentaire': userQuery = `RÉDIGE UNE NOTE DE SYNTHÈSE FACTUELLE. INTERLOCUTEUR : ${details.interlocuteur}. FOND : ${input}.`; break;
-      case 'mail': userQuery = `RÉDIGE UN COURRIEL PERSONNALISÉ. INTERLOCUTEUR : ${details.interlocuteur}. OBJECTIF : ${details.objectif}. CONTEXTE : ${input}.`; break;
-      case 'social': userQuery = `RÉDIGE UNE PUBLICATION POUR ${details.plateforme}. TON : ${details.objectif}. SUJET : ${input}.`; break;
-      case 'memoriser':
-        if (details.methodeMemo === 'corps') userQuery = `Expert en mémorisation (méthode loci corporelle). Crée un tableau Markdown : | Partie du corps | Mot-clé | Élément clé | Image mentale |. TEXTE : ${input}`;
-        else if (details.methodeMemo === 'crochets') userQuery = `Expert en mémorisation (crochets d'Hérigone 1=Pinceau...). Tableau Markdown : | N° & Crochet | Mot-clé | Élément clé | Image mentale |. TEXTE : ${input}`;
-        else userQuery = `Expert en mémorisation. Crée un système de balises émotionnelles. Tableau Markdown : | Point Clé | Émotion | Ancrage émotionnel |. TEXTE : ${input}`;
-        break;
+      case 'discours': userQuery = `DISCOURS (${details.duree}). PUBLIC: ${details.cible}. SUJET: ${input}`; break;
+      case 'langage': userQuery = `ÉLÉMENTS DE LANGAGE. OBJECTIF: ${details.objectif}. SUJET: ${input}`; break;
+      case 'argumentaire': userQuery = `NOTE DE SYNTHÈSE. INTERLOCUTEUR: ${details.interlocuteur}. SUJET: ${input}`; break;
+      case 'mail': userQuery = `MAIL. DESTINATAIRE: ${details.interlocuteur}. SUJET: ${input}`; break;
+      case 'social': userQuery = `POST ${details.plateforme}. TON: ${details.objectif}. SUJET: ${input}`; break;
+      case 'memoriser': userQuery = `MÉMORISATION (${details.methodeMemo}). TEXTE: ${input}`; break;
       default: userQuery = input;
     }
-
-    // On injecte la nouvelle requête dans l'historique global
     const newHistory = [...chatHistory, { role: "user", parts: [{ text: userQuery }] }];
-    updateAndSaveHistory(newHistory);
     callGemini(newHistory, systemPrompt);
   };
 
   const handleRefine = () => {
     if (!refineInput.trim()) return;
     const systemPrompt = buildSystemPrompt();
-    const newUserMessage = { 
-      role: "user", 
-      parts: [{ text: `CONSIGNE D'AFFINAGE : ${refineInput}. Réponds uniquement avec la nouvelle version du texte mis à jour, prêt à l'emploi, sans blabla d'introduction.` }] 
-    };
-    
-    // On injecte la consigne d'affinage dans l'historique
-    const newHistory = [...chatHistory, newUserMessage];
+    const newHistory = [...chatHistory, { role: "user", parts: [{ text: `AFFINER : ${refineInput}` }] }];
     setRefineInput('');
-    updateAndSaveHistory(newHistory);
     callGemini(newHistory, systemPrompt);
   };
 
   const copyToClipboard = () => {
-    const textArea = document.createElement("textarea");
-    textArea.value = result;
-    textArea.style.position = "fixed";
-    document.body.appendChild(textArea);
-    textArea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textArea);
+    navigator.clipboard.writeText(result);
     setCopySuccess(true);
     setTimeout(() => setCopySuccess(false), 2000);
   };
 
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Erreur lors de la déconnexion", error);
-    }
-  };
+  const handleSignOut = () => signOut(auth);
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-[#e6eef6] flex items-center justify-center">
-        <Loader2 className="animate-spin text-[#0058be]" size={40} />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Auth />;
-  }
-
-  if (user && (!profile || isEditingProfile)) {
-    return (
-      <Onboarding 
-        user={user} 
-        initialData={profile}
-        onComplete={(data) => {
-          setProfile(data);
-          setIsEditingProfile(false);
-        }} 
-      />
-    );
-  }
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-[#e6eef6]"><Loader2 className="animate-spin text-[#0058be]" /></div>;
+  if (!user) return <Auth />;
+  if (user && (!profile || isEditingProfile)) return <Onboarding user={user} initialData={profile} onComplete={(data) => { setProfile(data); setIsEditingProfile(false); }} />;
 
   return (
-    <div className="min-h-screen bg-[#e6eef6] font-sans text-[#171c1f] flex flex-col antialiased relative">
+    <div className="min-h-screen bg-[#e6eef6] font-sans flex flex-col antialiased relative">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&family=Newsreader:ital,wght@0,400;1,400&display=swap');
         .serif-text { font-family: 'Newsreader', serif; }
         .sans-text { font-family: 'Inter', sans-serif; }
       `}</style>
@@ -304,57 +253,33 @@ const App = () => {
       {/* HEADER */}
       <header className="fixed top-0 left-0 w-full z-[100] flex justify-between items-center px-6 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100">
         <div className="flex items-center gap-3">
-          {(showResult || (activeTab !== 'home' && activeTab !== 'docs')) ? (
-            <button onClick={() => { 
-              setShowResult(false); 
-              if(activeTab !== 'docs' && activeTab !== 'home') {
-                setActiveTab('home');
-              } 
-            }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full transition-all">
-              <ArrowLeft size={20} className="text-slate-900" />
-            </button>
-          ) : (
-            <img src="https://i.postimg.cc/k4v89QJf/logo_192.png" alt="Argumentis" className="w-8 h-8 rounded-lg shadow-sm object-cover bg-white" />
+          {(showResult || activeTab !== 'home') && (
+            <button onClick={() => { setShowResult(false); if(activeTab !== 'docs') setActiveTab('home'); }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full"><ArrowLeft size={20} /></button>
           )}
-          <h1 className="text-xl font-black tracking-tighter text-slate-900 uppercase sans-text">Argumentis</h1>
+          <h1 className="text-xl font-black tracking-tighter text-slate-900 uppercase">Argumentis</h1>
         </div>
-        
         <div className="flex items-center gap-4">
-          <div 
-            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" 
-            onClick={() => setIsEditingProfile(true)}
-            title="Modifier mon profil"
-          >
-            <div className="hidden lg:flex flex-col items-end border-r border-slate-100 pr-4 text-right">
-               <span className="text-[10px] font-black text-[#0058be] uppercase">{profile?.city || 'Espace Privé'}</span>
-               <span className="text-[11px] font-bold text-slate-700 truncate max-w-[12rem]">{profile?.role || 'Utilisateur'}</span>
-            </div>
-            <UserCircle size={28} className="text-[#0058be]" />
+          <div className="hidden lg:flex flex-col items-end text-right mr-2" onClick={() => setIsEditingProfile(true)}>
+             <span className="text-[10px] font-black text-[#0058be] uppercase">{profile?.city}</span>
+             <span className="text-[11px] font-bold text-slate-700">{profile?.role}</span>
           </div>
-          
-          {/* Bouton pour forcer le nettoyage de la mémoire manuellement */}
-          <button 
-            onClick={() => { updateAndSaveHistory([]); alert("Mémoire de l'IA réinitialisée !"); }} 
-            className="text-[10px] font-bold text-[#0058be] hover:underline hidden sm:block ml-2"
-          >
-            Vider l'historique
-          </button>
-
-          <button onClick={handleSignOut} className="text-slate-400 hover:text-red-500 transition-colors ml-2" title="Se déconnecter">
-            <LogOut size={20} />
-          </button>
+          <UserCircle size={28} className="text-[#0058be] cursor-pointer" onClick={() => setIsEditingProfile(true)} />
+          <button onClick={handleSignOut} className="text-slate-400 hover:text-red-500"><LogOut size={20} /></button>
         </div>
       </header>
 
       {/* MAIN CONTENT */}
-      <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 ${showResult ? 'max-w-5xl' : 'max-w-xl md:max-w-3xl'}`}>
+      <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 ${showResult ? 'max-w-5xl' : 'max-w-3xl'}`}>
         
         {!showResult && activeTab === 'home' && (
           <Dashboard 
             profile={profile} 
             setActiveTab={setActiveTab} 
             setChatHistory={setChatHistory} 
-            setShowLegal={setShowLegal} 
+            setShowLegal={setShowLegal}
+            archives={archives} // Injection des archives
+            setResult={setResult}
+            setShowResult={setShowResult}
           />
         )}
 
@@ -362,8 +287,8 @@ const App = () => {
           <GenerationForm
             activeTab={activeTab}
             docs={docs}
-            selectedDocId={selectedDocId}
-            setSelectedDocId={setSelectedDocId}
+            selectedDocIds={selectedDocIds} // Changé pour multiple
+            setSelectedDocIds={setSelectedDocIds}
             details={details}
             setDetails={setDetails}
             input={input}
@@ -394,26 +319,19 @@ const App = () => {
       {/* BOTTOM NAV */}
       {!showResult && (
         <nav className="fixed bottom-0 left-0 w-full flex justify-around p-4 bg-white/90 backdrop-blur-xl rounded-t-[3rem] shadow-lg border-t border-slate-50 z-[100]">
-          <button onClick={() => { setActiveTab('home'); setInput(''); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
-          <button onClick={() => { setActiveTab('discours'); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
-          <button onClick={() => { setActiveTab('docs'); }} className={`p-4 rounded-2xl flex flex-col items-center ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
+          <button onClick={() => setActiveTab('home')} className={`p-4 rounded-2xl ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
+          <button onClick={() => setActiveTab('discours')} className={`p-4 rounded-2xl ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
+          <button onClick={() => setActiveTab('docs')} className={`p-4 rounded-2xl ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
         </nav>
       )}
 
-      {/* MODALE MENTIONS LÉGALES */}
+      {/* MODALE LÉGALE (Optionnelle, peut rester telle quelle) */}
       {showLegal && (
-        <div className="fixed inset-0 z-[200] bg-[#091426]/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-            <h2 className="text-2xl font-black text-[#091426] mb-6 serif-text">Mentions Légales</h2>
-            <div className="space-y-4 text-sm text-slate-600 h-64 overflow-y-auto pr-2">
-              <p><strong>Éditeur de l'application :</strong> Argumentis</p>
-              <p><strong>Hébergement :</strong> Firebase (Google LLC), hébergé en Europe.</p>
-              <p><strong>Propriété intellectuelle :</strong> Le contenu généré et la structure de l'application sont protégés par les lois en vigueur sur la propriété intellectuelle.</p>
-              <p><strong>Confidentialité &amp; RGPD :</strong> Vos données de profil et vos documents sont stockés de manière sécurisée et chiffrée. Ils ne sont utilisés que pour la génération de vos textes par l'IA et ne sont pas partagés à des tiers à des fins commerciales. Vous disposez d'un droit d'accès, de modification et de suppression de vos données directement depuis votre espace profil.</p>
-            </div>
-            <button onClick={() => setShowLegal(false)} className="mt-8 w-full bg-[#0058be] text-white font-bold py-4 rounded-2xl hover:bg-blue-800 transition-colors">
-              Fermer
-            </button>
+        <div className="fixed inset-0 z-[200] bg-[#091426]/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full">
+            <h2 className="text-2xl font-black mb-4">Mentions Légales</h2>
+            <p className="text-sm text-slate-600 mb-8">Vos données sont stockées de manière sécurisée et ne sont utilisées que pour vos générations.</p>
+            <button onClick={() => setShowLegal(false)} className="w-full bg-[#0058be] text-white py-4 rounded-2xl font-bold">Fermer</button>
           </div>
         </div>
       )}
