@@ -203,6 +203,18 @@ const App = () => {
     }
   };
 
+  // Fonction pour supprimer un document de la base de savoir
+  const handleDeleteDoc = async (id) => {
+    if (window.confirm("Voulez-vous vraiment supprimer ce document de votre base de savoir ?")) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', id));
+      } catch (error) {
+        console.error("Erreur lors de la suppression du document :", error);
+        alert("Impossible de supprimer le document.");
+      }
+    }
+  };
+  
   const handleGenerate = () => {
     const systemPrompt = buildSystemPrompt();
     let userQuery = "";
