@@ -285,7 +285,22 @@ const App = () => {
       </header>
 
       <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 ${showResult ? 'max-w-5xl' : 'max-w-3xl'}`}>
-        {!showResult && activeTab === 'home' && <Dashboard profile={profile} setActiveTab={setActiveTab} setChatHistory={setChatHistory} setShowLegal={setShowLegal} archives={archives} setResult={setResult} setShowResult={setShowResult} handleDeleteArchive={handleDeleteArchive} />}
+        {/* 1. TABLEAU DE BORD */}
+        {!showResult && activeTab === 'home' && (
+          <Dashboard profile={profile} setActiveTab={setActiveTab} setChatHistory={setChatHistory} setShowLegal={setShowLegal} archives={archives} setResult={setResult} setShowResult={setShowResult} handleDeleteArchive={handleDeleteArchive} />
+        )}
+
+        {/* 2. FORMULAIRE DE GÉNÉRATION (Qui avait disparu !) */}
+        {!showResult && activeTab !== 'home' && activeTab !== 'docs' && (
+          <GenerationForm activeTab={activeTab} docs={docs} selectedDocIds={selectedDocIds} setSelectedDocIds={setSelectedDocIds} details={details} setDetails={setDetails} input={input} setInput={setInput} showRef={showRef} setShowRef={setShowRef} isReadingPdf={isReadingPdf} handleRefFileUpload={async (e) => { const file = e.target.files[0]; if(!file) return; setIsReadingPdf(true); try { const txt = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await file.text(); setReferenceText(prev => prev ? prev + "\n" + txt : txt); } catch(e) { alert("Erreur de lecture."); } setIsReadingPdf(false); }} referenceText={referenceText} setReferenceText={setReferenceText} handleGenerate={handleGenerate} loading={loading} />
+        )}
+
+        {/* 3. AFFICHAGE DU RÉSULTAT */}
+        {showResult && (
+          <ResultView showRaw={showRaw} setShowRaw={setShowRaw} copyToClipboard={() => { navigator.clipboard.writeText(result); setCopySuccess(true); setTimeout(()=>setCopySuccess(false), 2000); }} copySuccess={copySuccess} result={result} profile={profile} refineInput={refineInput} setRefineInput={setRefineInput} handleRefine={() => { const sys = buildSystemPrompt(); callGemini([...chatHistory, { role: "user", parts: [{ text: `AFFINER : ${refineInput}` }] }], sys); setRefineInput(''); }} loading={loading} />
+        )}
+
+        {/* 4. BASE DE SAVOIR (Une seule fois, avec la mise à jour intégrée !) */}
         {!showResult && activeTab === 'docs' && (
           <KnowledgeBase 
             docs={docs} 
@@ -298,8 +313,6 @@ const App = () => {
             handleUpdateDoc={handleUpdateDoc} 
           />
         )}
-        {showResult && <ResultView showRaw={showRaw} setShowRaw={setShowRaw} copyToClipboard={() => { navigator.clipboard.writeText(result); setCopySuccess(true); setTimeout(()=>setCopySuccess(false), 2000); }} copySuccess={copySuccess} result={result} profile={profile} refineInput={refineInput} setRefineInput={setRefineInput} handleRefine={() => { const sys = buildSystemPrompt(); callGemini([...chatHistory, { role: "user", parts: [{ text: `AFFINER : ${refineInput}` }] }], sys); setRefineInput(''); }} loading={loading} />}
-        {!showResult && activeTab === 'docs' && <KnowledgeBase docs={docs} isAddingDoc={isAddingDoc} setIsAddingDoc={setIsAddingDoc} newDoc={newDoc} setNewDoc={setNewDoc} handleSaveDoc={async () => { await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents'), { ...newDoc, createdAt: Date.now() }); setIsAddingDoc(false); setNewDoc({ title: '', category: 'Référence', content: '' }); }} handleDeleteDoc={async (id) => await deleteDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', id))} />}
       </main>
 
       {!showResult && (
