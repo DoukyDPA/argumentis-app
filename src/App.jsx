@@ -54,19 +54,45 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    // Chargement des documents de la base
-    const docsRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
-    const unsubDocs = onSnapshot(docsRef, (snap) => {
-      setDocs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.createdAt - a.createdAt));
-    });
-    // Chargement des 10 archives
-    const archRef = collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives');
-    const unsubArch = onSnapshot(archRef, (snap) => {
-      setArchives(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.createdAt - a.createdAt).slice(0, 10));
-    });
-    return () => { unsubDocs(); unsubArch(); };
-  }, [user]);
+  const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    if (currentUser) {
+      // Un utilisateur est connecté
+      setUser(currentUser);
+      
+      // 1. Charger le profil
+      const docRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists() && docSnap.data().profile) {
+        setProfile(docSnap.data().profile);
+      } else {
+        setProfile(null); 
+      }
+      
+      // 2. Charger l'historique de chat
+      const historyRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid, 'context', 'history');
+      const historySnap = await getDoc(historyRef);
+      if (historySnap.exists()) {
+        setChatHistory(historySnap.data().messages || []);
+      } else {
+        setChatHistory([]);
+      }
+    } else {
+      // CAS CRITIQUE : Personne n'est connecté ou déconnexion
+      // On vide TOUTES les informations personnelles pour le prochain utilisateur
+      setUser(null);
+      setProfile(null);
+      setChatHistory([]);
+      setDocs([]);
+      setArchives([]);
+      setSelectedDocIds([]);
+      setResult('');
+      setActiveTab('home');
+    }
+    setAuthLoading(false);
+  });
+
+  return () => unsubscribe();
+}, []);
 
   const buildSystemPrompt = () => {
     const activeDocs = docs.filter(d => selectedDocIds.includes(d.id));
