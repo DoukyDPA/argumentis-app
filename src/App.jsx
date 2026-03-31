@@ -82,8 +82,19 @@ const App = () => {
   const callGemini = async (historyParams, systemInstruction) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ historyParams, systemInstruction }) });
+      const response = await fetch('/api/gemini', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ historyParams, systemInstruction }) 
+      });
+      
       const data = await response.json();
+
+      // Si le backend nous a renvoyé une erreur (400, 500...)
+      if (!response.ok) {
+        throw new Error(data.error || "Erreur de génération");
+      }
+
       let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
       const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
       setResult(cleanText);
@@ -92,9 +103,12 @@ const App = () => {
       setChatHistory(newHistory.slice(-10));
       await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'context', 'history'), { messages: newHistory.slice(-10) }, { merge: true });
 
-      // SAUVEGARDE EN ARCHIVE
       await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives'), { content: cleanText, type: activeTab, createdAt: Date.now() });
-    } catch (e) { setResult("⚠️ Erreur de connexion."); }
+    } catch (e) { 
+      console.error(e);
+      // L'erreur exacte s'affichera à l'écran
+      setResult(`⚠️ Erreur : ${e.message}`); 
+    }
     setShowResult(true); setLoading(false);
   };
 
