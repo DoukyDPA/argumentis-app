@@ -1,5 +1,5 @@
 import React from 'react';
-import { PenTool, ShieldCheck, MessageSquare, Share2, Brain, MailIcon, Clock, FileText, ChevronRight, Sparkles } from 'lucide-react';
+import { PenTool, ShieldCheck, MessageSquare, Share2, Brain, MailIcon, Clock, FileText, ChevronRight, Sparkles, Trash2 } from 'lucide-react';
 
 export const modules = [
   { id: 'discours', label: 'Discours', sub: 'Allocutions officielles', icon: <PenTool size={24} /> },
@@ -17,7 +17,8 @@ export const Dashboard = ({
   setShowLegal, 
   archives = [], 
   setResult, 
-  setShowResult 
+  setShowResult,
+  handleDeleteArchive
 }) => {
   
   const handleOpenArchive = (item) => {
@@ -71,16 +72,17 @@ export const Dashboard = ({
             {archives.map((item) => {
               const moduleInfo = modules.find(m => m.id === item.type);
               return (
-                <button
-                  key={item.id}
-                  onClick={() => handleOpenArchive(item)}
-                  className="w-full flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-50 hover:border-blue-100 hover:shadow-md transition-all group"
-                >
-                  <div className="flex items-center gap-4 overflow-hidden">
+                <div key={item.id} className="w-full flex items-center justify-between p-3 bg-white rounded-2xl border border-slate-50 hover:border-blue-100 hover:shadow-md transition-all group">
+                  
+                  {/* Zone cliquable pour ouvrir l'archive */}
+                  <button
+                    onClick={() => handleOpenArchive(item)}
+                    className="flex-1 flex items-center gap-4 overflow-hidden text-left"
+                  >
                     <div className="w-10 h-10 shrink-0 rounded-xl bg-blue-50 flex items-center justify-center text-[#0058be]">
                       {moduleInfo?.icon || <FileText size={18} />}
                     </div>
-                    <div className="text-left overflow-hidden">
+                    <div className="overflow-hidden">
                       <p className="font-bold text-[#091426] text-sm truncate pr-4">
                         {item.content.substring(0, 60)}...
                       </p>
@@ -93,9 +95,26 @@ export const Dashboard = ({
                         </span>
                       </div>
                     </div>
+                  </button>
+
+                  {/* Actions à droite (Poubelle + Chevron) */}
+                  <div className="flex items-center gap-1 shrink-0 pl-2">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation(); // Empêche d'ouvrir le document quand on clique sur la poubelle
+                        if(window.confirm("Voulez-vous vraiment supprimer cet élément ?")) {
+                          handleDeleteArchive(item.id);
+                        }
+                      }}
+                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                      title="Supprimer"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                    <ChevronRight size={18} className="text-slate-300 pointer-events-none" />
                   </div>
-                  <ChevronRight size={18} className="text-slate-300 group-hover:text-[#0058be] transition-colors shrink-0" />
-                </button>
+                  
+                </div>
               );
             })}
           </div>
