@@ -188,6 +188,21 @@ const App = () => {
     }
   };
   
+  // Fonction pour sauvegarder un nouveau document
+  const handleSaveDoc = async () => {
+    try {
+      await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents'), { 
+        ...newDoc, 
+        createdAt: Date.now() 
+      });
+      setIsAddingDoc(false);
+      setNewDoc({ title: '', category: 'Référence', content: '' });
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde :", error);
+      alert("Erreur de sauvegarde : " + error.message);
+    }
+  };
+
   const handleGenerate = () => {
     const systemPrompt = buildSystemPrompt();
     let userQuery = "";
@@ -234,7 +249,17 @@ const App = () => {
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Newsreader:ital,wght@0,400;1,400&display=swap'); .serif-text { font-family: 'Newsreader', serif; } .sans-text { font-family: 'Inter', sans-serif; }`}</style>
       <header className="fixed top-0 left-0 w-full z-[100] flex justify-between items-center px-6 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100">
         <div className="flex items-center gap-3">
-          {(showResult || activeTab !== 'home') && <button onClick={() => { setShowResult(false); if(activeTab !== 'docs') setActiveTab('home'); }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full"><ArrowLeft size={20} /></button>}
+          {(showResult || activeTab !== 'home') && (
+            <button onClick={() => { setShowResult(false); if(activeTab !== 'docs') setActiveTab('home'); }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full">
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          {/* AJOUT DE L'IMAGE DU LOGO ICI */}
+          <img 
+            src="https://i.postimg.cc/k4v89QJf/logo_192.png" 
+            alt="Logo" 
+            className="w-8 h-8 rounded-lg shadow-sm object-cover" 
+          />
           <h1 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Argumentis</h1>
         </div>
         <div className="flex items-center gap-4 cursor-pointer" onClick={() => setIsEditingProfile(true)}>
