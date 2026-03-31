@@ -1,31 +1,38 @@
 import React, { useState } from 'react';
-import { BookOpen, Plus, Trash2, Upload, Loader2 } from 'lucide-react';
-import { extractTextFromPdf } from '../utils/pdfHelper'; // On importe notre nouvel outil
+import { BookOpen, Plus, Trash2, Upload, Loader2, Edit2, Check } from 'lucide-react';
+import { extractTextFromPdf } from '../utils/pdfHelper';
 
-export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNewDoc, handleSaveDoc, handleDeleteDoc }) => {
-  const [isReading, setIsReading] = useState(false); // État pour afficher un chargement pendant la lecture du PDF
-  const MAX_FILE_SIZE = 5 * 1024 * 1024; // On monte la limite à 5 Mo pour les PDF
+export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNewDoc, handleSaveDoc, handleDeleteDoc, handleUpdateDoc }) => {
+  const [isReading, setIsReading] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [tempTitle, setTempTitle] = useState("");
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+  const startEditing = (doc) => {
+    setEditingId(doc.id);
+    setTempTitle(doc.title);
+  };
+
+  const saveTitle = (id) => {
+    if (tempTitle.trim()) {
+      handleUpdateDoc(id, { title: tempTitle });
+    }
+    setEditingId(null);
+  };
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     if (file.size > MAX_FILE_SIZE) {
       alert("⚠️ Le fichier est trop volumineux (limite : 5 Mo).");
       return;
     }
-
     setIsReading(true);
-
     try {
       let extractedText = '';
-      
-      // Si c'est un PDF, on utilise notre outil
       if (file.type === 'application/pdf') {
         extractedText = await extractTextFromPdf(file);
-      } 
-      // Sinon, on lit le texte normalement
-      else {
+      } else {
         extractedText = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (event) => resolve(event.target.result);
@@ -33,7 +40,6 @@ export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNe
           reader.readAsText(file);
         });
       }
-
       setNewDoc({ 
         ...newDoc, 
         content: extractedText,
@@ -43,7 +49,7 @@ export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNe
       alert("Erreur lors de la lecture du fichier.");
     } finally {
       setIsReading(false);
-      e.target.value = null; // Réinitialise l'input
+      e.target.value = null;
     }
   };
 
@@ -62,7 +68,6 @@ export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNe
       {isAddingDoc && (
         <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl mb-8 animate-in slide-in-from-top-4">
           <h3 className="text-lg font-bold mb-4 text-[#091426] serif-text">Ajouter un document de référence</h3>
-          
           <div className="mb-6 flex items-center gap-4">
             <label className={`flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer transition-colors text-sm font-bold border ${isReading ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-blue-50 text-[#0058be] hover:bg-blue-100 border-blue-100'}`}>
               {isReading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
@@ -71,47 +76,23 @@ export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNe
             </label>
             <span className="text-xs text-slate-400 font-medium">Max 5 Mo</span>
           </div>
-
           <div className="space-y-4">
-            <input 
-              type="text" 
-              placeholder="Titre du document..." 
-              value={newDoc.title}
-              onChange={e => setNewDoc({...newDoc, title: e.target.value})}
-              className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-[#0058be]/20"
-            />
-            <select 
-              value={newDoc.category}
-              onChange={e => setNewDoc({...newDoc, category: e.target.value})}
-              className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-[#0058be]/20"
-            >
+            <input type="text" placeholder="Titre du document..." value={newDoc.title} onChange={e => setNewDoc({...newDoc, title: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-[#0058be]/20" />
+            <select value={newDoc.category} onChange={e => setNewDoc({...newDoc, category: e.target.value})} className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-[#0058be]/20">
               <option value="Interne">Interne</option>
               <option value="Référence">Référence</option>
               <option value="Contexte">Contexte</option>
             </select>
-            <textarea 
-              placeholder="Ou collez ici le contenu de votre document..." 
-              value={newDoc.content}
-              onChange={e => setNewDoc({...newDoc, content: e.target.value})}
-              className="w-full h-32 bg-slate-50 border-none rounded-xl px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-[#0058be]/20 resize-none"
-            />
-            <button 
-              onClick={handleSaveDoc}
-              disabled={!newDoc.title || !newDoc.content || isReading}
-              className="w-full bg-[#0058be] text-white font-bold py-3 rounded-xl hover:bg-blue-800 disabled:opacity-50 transition-colors"
-            >
-              Sauvegarder dans ma base
-            </button>
+            <textarea placeholder="Ou collez ici le contenu de votre document..." value={newDoc.content} onChange={e => setNewDoc({...newDoc, content: e.target.value})} className="w-full h-32 bg-slate-50 border-none rounded-xl px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-[#0058be]/20 resize-none" />
+            <button onClick={handleSaveDoc} disabled={!newDoc.title || !newDoc.content || isReading} className="w-full bg-[#0058be] text-white font-bold py-3 rounded-xl hover:bg-blue-800 disabled:opacity-50 transition-colors">Sauvegarder dans ma base</button>
           </div>
         </div>
       )}
 
-      {/* Reste du code d'affichage des documents inchangé... */}
       {docs.length === 0 ? (
         <div className="text-center p-12 bg-white rounded-3xl border border-dashed border-slate-200">
           <BookOpen size={48} className="mx-auto text-slate-200 mb-4" />
           <p className="text-slate-400 font-medium">Votre base de savoir est vide.</p>
-          <p className="text-xs text-slate-400 mt-2">Ajoutez des documents pour donner du contexte à l'IA.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -123,7 +104,28 @@ export const KnowledgeBase = ({ docs, isAddingDoc, setIsAddingDoc, newDoc, setNe
                   <Trash2 size={16} />
                 </button>
               </div>
-              <h3 className="serif-text text-xl font-bold mb-3 text-[#091426]">{d.title}</h3>
+
+              {editingId === d.id ? (
+                <div className="flex items-center gap-2 mb-3">
+                  <input 
+                    type="text" 
+                    value={tempTitle} 
+                    onChange={(e) => setTempTitle(e.target.value)}
+                    className="flex-1 bg-slate-50 border-b-2 border-[#0058be] rounded px-2 py-1 text-lg font-bold outline-none"
+                    onKeyDown={(e) => e.key === 'Enter' && saveTitle(d.id)}
+                    autoFocus
+                  />
+                  <button onClick={() => saveTitle(d.id)} className="p-2 bg-[#0058be] text-white rounded-lg"><Check size={16} /></button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between group/title">
+                  <h3 className="serif-text text-xl font-bold mb-3 text-[#091426]">{d.title}</h3>
+                  <button onClick={() => startEditing(d)} className="text-slate-300 hover:text-[#0058be] opacity-0 group-hover/title:opacity-100 transition-all p-1 mb-3">
+                    <Edit2 size={14} />
+                  </button>
+                </div>
+              )}
+              
               <p className="text-sm text-slate-400 line-clamp-3 italic leading-relaxed">"{d.content}"</p>
             </div>
           ))}
