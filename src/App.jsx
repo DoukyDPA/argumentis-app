@@ -67,7 +67,7 @@ const App = () => {
         }
 
       } else {
-        // Déconnexion complète : on nettoie l'interface
+        // 1. Déconnexion complète : on nettoie TOUTE l'interface
         setUser(null);
         setProfile(null);
         setChatHistory([]);
@@ -76,6 +76,21 @@ const App = () => {
         setSelectedDocIds([]);
         setResult('');
         setActiveTab('home');
+        
+        // --- Vider les champs de saisie pour le prochain utilisateur ---
+        setInput('');
+        setReferenceText('');
+        setRefineInput('');
+        setShowRef(false);
+        setShowResult(false);
+        setDetails({ 
+          duree: '', 
+          cible: '', 
+          objectif: '', 
+          interlocuteur: '', 
+          plateforme: 'LinkedIn', 
+          methodeMemo: 'crochets' 
+        });
       }
       setAuthLoading(false);
     });
