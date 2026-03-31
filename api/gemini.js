@@ -1,14 +1,17 @@
 // api/gemini.js
+
+// Optionnel : Si tu es sur Vercel, cela étend le timeout
+export const config = {
+  maxDuration: 60, 
+};
+
 export default async function handler(req, res) {
-  // On n'accepte que les requêtes POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Méthode non autorisée' });
   }
 
   try {
     const { historyParams, systemInstruction } = req.body;
-    
-    // LA CLÉ EST ICI, TOTALEMENT INVISIBLE POUR LE NAVIGATEUR
     const apiKey = process.env.VITE_GEMINI_API_KEY; 
 
     if (!apiKey) {
@@ -25,7 +28,12 @@ export default async function handler(req, res) {
     });
 
     if (!response.ok) {
-      throw new Error(`Erreur API Google : ${response.status}`);
+      // ON CAPTURE LA VRAIE ERREUR GOOGLE ICI AU LIEU DE LEVER UNE EXCEPTION
+      const errorData = await response.json().catch(() => null);
+      console.error("Détail erreur Google :", errorData);
+      return res.status(response.status).json({ 
+        error: errorData?.error?.message || `Erreur API Google : ${response.status}` 
+      });
     }
 
     const data = await response.json();
@@ -33,6 +41,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("Erreur backend:", error);
-    return res.status(500).json({ error: "Erreur lors de la génération" });
+    // ON RENVOIE LE MESSAGE D'ERREUR PRÉCIS
+    return res.status(500).json({ error: error.message || "Erreur inattendue du serveur" });
   }
 }
