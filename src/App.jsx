@@ -61,11 +61,12 @@ const App = () => {
       
       // 1. Charger le profil
       const docRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists() && docSnap.data().profile) {
-        setProfile(docSnap.data().profile);
+      const docSnap = await getGet(docRef);
+      if (docSnap.exists()) {
+      setProfile(docSnap.data().profile);
       } else {
-        setProfile(null); 
+      console.log("Profil non trouvé pour cet UID :", currentUser.uid);
+      setProfile(null); 
       }
       
       // 2. Charger l'historique de chat
