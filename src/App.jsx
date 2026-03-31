@@ -176,6 +176,17 @@ const App = () => {
       console.error("Erreur lors de la suppression :", error);
     }
   };
+
+  // Fonction pour modifier le titre d'un document
+  const handleUpdateDoc = async (id, updatedData) => {
+    try {
+      const docRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', id);
+      await setDoc(docRef, updatedData, { merge: true });
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour du document :", error);
+      alert("Impossible de modifier le titre.");
+    }
+  };
   
   const handleGenerate = () => {
     const systemPrompt = buildSystemPrompt();
@@ -238,7 +249,18 @@ const App = () => {
 
       <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 ${showResult ? 'max-w-5xl' : 'max-w-3xl'}`}>
         {!showResult && activeTab === 'home' && <Dashboard profile={profile} setActiveTab={setActiveTab} setChatHistory={setChatHistory} setShowLegal={setShowLegal} archives={archives} setResult={setResult} setShowResult={setShowResult} handleDeleteArchive={handleDeleteArchive} />}
-        {!showResult && activeTab !== 'home' && activeTab !== 'docs' && <GenerationForm activeTab={activeTab} docs={docs} selectedDocIds={selectedDocIds} setSelectedDocIds={setSelectedDocIds} details={details} setDetails={setDetails} input={input} setInput={setInput} showRef={showRef} setShowRef={setShowRef} isReadingPdf={isReadingPdf} handleRefFileUpload={async (e) => { const file = e.target.files[0]; if(!file) return; setIsReadingPdf(true); try { const txt = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await file.text(); setReferenceText(prev => prev ? prev + "\n" + txt : txt); } catch(e) { alert("Erreur de lecture."); } setIsReadingPdf(false); }} referenceText={referenceText} setReferenceText={setReferenceText} handleGenerate={handleGenerate} loading={loading} />}
+        {!showResult && activeTab === 'docs' && (
+          <KnowledgeBase 
+            docs={docs} 
+            isAddingDoc={isAddingDoc} 
+            setIsAddingDoc={setIsAddingDoc} 
+            newDoc={newDoc} 
+            setNewDoc={setNewDoc} 
+            handleSaveDoc={handleSaveDoc} 
+            handleDeleteDoc={handleDeleteDoc}
+            handleUpdateDoc={handleUpdateDoc} 
+          />
+        )}
         {showResult && <ResultView showRaw={showRaw} setShowRaw={setShowRaw} copyToClipboard={() => { navigator.clipboard.writeText(result); setCopySuccess(true); setTimeout(()=>setCopySuccess(false), 2000); }} copySuccess={copySuccess} result={result} profile={profile} refineInput={refineInput} setRefineInput={setRefineInput} handleRefine={() => { const sys = buildSystemPrompt(); callGemini([...chatHistory, { role: "user", parts: [{ text: `AFFINER : ${refineInput}` }] }], sys); setRefineInput(''); }} loading={loading} />}
         {!showResult && activeTab === 'docs' && <KnowledgeBase docs={docs} isAddingDoc={isAddingDoc} setIsAddingDoc={setIsAddingDoc} newDoc={newDoc} setNewDoc={setNewDoc} handleSaveDoc={async () => { await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents'), { ...newDoc, createdAt: Date.now() }); setIsAddingDoc(false); setNewDoc({ title: '', category: 'Référence', content: '' }); }} handleDeleteDoc={async (id) => await deleteDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', id))} />}
       </main>
