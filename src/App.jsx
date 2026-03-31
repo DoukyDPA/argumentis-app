@@ -154,6 +154,14 @@ const App = () => {
     setShowResult(true); setLoading(false);
   };
 
+  const handleDeleteArchive = async (archiveId) => {
+    try {
+      await deleteDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives', archiveId));
+    } catch (error) {
+      console.error("Erreur lors de la suppression :", error);
+    }
+  };
+  
   const handleGenerate = () => {
     const systemPrompt = buildSystemPrompt();
     let userQuery = "";
