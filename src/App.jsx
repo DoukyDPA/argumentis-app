@@ -37,8 +37,6 @@ const App = () => {
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
   const [showAuthScreen, setShowAuthScreen] = useState(false);
-  
-  // NOUVEL ÉTAT POUR L'ÉDITION
   const [currentArchiveId, setCurrentArchiveId] = useState(null);
 
   useEffect(() => {
@@ -119,7 +117,6 @@ const App = () => {
       setChatHistory(newHistory.slice(-10));
       await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'context', 'history'), { messages: newHistory.slice(-10) }, { merge: true });
 
-      // SAUVEGARDE ET RÉCUPÉRATION DE L'ID POUR ÉDITION FUTURE
       const docRef = await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives'), { 
         content: cleanText, 
         type: activeTab, 
@@ -134,18 +131,12 @@ const App = () => {
     setShowResult(true); setLoading(false);
   };
 
-  // NOUVELLE FONCTION DE MISE À JOUR DE L'ARCHIVE
   const handleUpdateArchive = async (archiveId, newContent) => {
     if (!user || !archiveId) return;
     try {
       const archiveRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives', archiveId);
-      await setDoc(archiveRef, { 
-        content: newContent,
-        updatedAt: Date.now() 
-      }, { merge: true });
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour :", error);
-    }
+      await setDoc(archiveRef, { content: newContent, updatedAt: Date.now() }, { merge: true });
+    } catch (error) { console.error("Erreur lors de la mise à jour :", error); }
   };
 
   const handleDeleteArchive = async (archiveId) => {
@@ -198,7 +189,9 @@ const App = () => {
   return (
     <div className="min-h-screen bg-[#e6eef6] font-sans flex flex-col antialiased">
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Newsreader:ital,wght@0,400;1,400&display=swap'); .serif-text { font-family: 'Newsreader', serif; } .sans-text { font-family: 'Inter', sans-serif; }`}</style>
-      <header className="fixed top-0 left-0 w-full z-[100] flex justify-between items-center px-6 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100">
+      
+      {/* Ajout de print:hidden pour masquer le menu en impression */}
+      <header className="fixed top-0 left-0 w-full z-[100] flex justify-between items-center px-6 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100 print:hidden">
         <div className="flex items-center gap-3">
           {(showResult || activeTab !== 'home') && (
             <button onClick={() => { setShowResult(false); if(activeTab !== 'docs') setActiveTab('home'); }} className="p-2 -ml-2 hover:bg-slate-100 rounded-full"><ArrowLeft size={20} /></button>
@@ -216,7 +209,8 @@ const App = () => {
         </div>
       </header>
 
-      <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 ${showResult ? 'max-w-5xl' : 'max-w-3xl'}`}>
+      {/* Ajout de print:pt-0 pour enlever la marge en impression */}
+      <main className={`pt-20 px-6 mx-auto w-full transition-all duration-500 pb-40 print:pt-0 print:pb-0 ${showResult ? 'max-w-5xl' : 'max-w-3xl'}`}>
         {!showResult && activeTab === 'home' && (
           <Dashboard profile={profile} setActiveTab={setActiveTab} setChatHistory={setChatHistory} setShowLegal={setShowLegal} archives={archives} setResult={setResult} setShowResult={setShowResult} handleDeleteArchive={handleDeleteArchive} setCurrentArchiveId={setCurrentArchiveId} />
         )}
@@ -228,8 +222,15 @@ const App = () => {
         {showResult && (
           <ResultView 
             showRaw={showRaw} setShowRaw={setShowRaw} 
-            copyToClipboard={() => { navigator.clipboard.writeText(result); setCopySuccess(true); setTimeout(()=>setCopySuccess(false), 2000); }} 
-            copySuccess={copySuccess} result={result} profile={profile} 
+            // MODIFICATION ICI : On passe la fonction dynamique pour copier le texte demandé
+            copyToClipboard={(textToCopy) => { 
+              navigator.clipboard.writeText(textToCopy); 
+              setCopySuccess(true); 
+              setTimeout(()=>setCopySuccess(false), 2000); 
+            }} 
+            copySuccess={copySuccess} 
+            result={result} 
+            profile={profile} 
             refineInput={refineInput} setRefineInput={setRefineInput} 
             handleRefine={() => { const sys = buildSystemPrompt(); callGemini([...chatHistory, { role: "user", parts: [{ text: `AFFINER : ${refineInput}` }] }], sys); setRefineInput(''); }} 
             loading={loading} 
@@ -243,8 +244,9 @@ const App = () => {
         )}
       </main>
 
+      {/* Ajout de print:hidden pour masquer la barre de navigation du bas */}
       {!showResult && (
-        <nav className="fixed bottom-0 left-0 w-full flex justify-around p-4 bg-white/90 backdrop-blur-xl rounded-t-[3rem] border-t border-slate-50 z-[100]">
+        <nav className="fixed bottom-0 left-0 w-full flex justify-around p-4 bg-white/90 backdrop-blur-xl rounded-t-[3rem] border-t border-slate-50 z-[100] print:hidden">
           <button onClick={() => setActiveTab('home')} className={`p-4 rounded-2xl ${activeTab === 'home' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Home size={22} /></button>
           <button onClick={() => setActiveTab('discours')} className={`p-4 rounded-2xl ${activeTab !== 'home' && activeTab !== 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><PenTool size={22} /></button>
           <button onClick={() => setActiveTab('docs')} className={`p-4 rounded-2xl ${activeTab === 'docs' ? 'bg-[#091426] text-white' : 'text-slate-400'}`}><Folder size={22} /></button>
