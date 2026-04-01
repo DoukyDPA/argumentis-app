@@ -136,6 +136,10 @@ const App = () => {
     try {
       const archiveRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives', archiveId);
       await setDoc(archiveRef, { content: newContent, updatedAt: Date.now() }, { merge: true });
+      
+      // AJOUTEZ CETTE LIGNE : Pour rafraîchir le texte en mémoire locale immédiatement
+      setResult(newContent); 
+      
     } catch (error) { console.error("Erreur lors de la mise à jour :", error); }
   };
 

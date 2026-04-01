@@ -18,15 +18,16 @@ export const Dashboard = ({
   archives = [], 
   setResult, 
   setShowResult,
-  handleDeleteArchive
+  handleDeleteArchive,
+  setCurrentArchiveId // <-- NOUVEAU PROP AJOUTÉ ICI
 }) => {
   
   const handleOpenArchive = (item) => {
-  setResult(item.content);
-  setShowResult(true);
-  setActiveTab(item.type);
-  setCurrentArchiveId(item.id); // Assurez-vous d'avoir passé setCurrentArchiveId en prop
-};
+    setResult(item.content);
+    setShowResult(true);
+    setActiveTab(item.type);
+    setCurrentArchiveId(item.id); // <-- C'EST CETTE LIGNE QUI MANQUAIT !
+  };
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -98,11 +99,11 @@ export const Dashboard = ({
                     </div>
                   </button>
 
-                  {/* Actions à droite (Poubelle + Chevron) */}
+                  {/* Actions à droite */}
                   <div className="flex items-center gap-1 shrink-0 pl-2">
                     <button 
                       onClick={(e) => {
-                        e.stopPropagation(); // Empêche d'ouvrir le document quand on clique sur la poubelle
+                        e.stopPropagation(); 
                         if(window.confirm("Voulez-vous vraiment supprimer cet élément ?")) {
                           handleDeleteArchive(item.id);
                         }
