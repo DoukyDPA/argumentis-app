@@ -105,10 +105,10 @@ export const Auth = ({ onBack }) => {
               <label className="text-[10px] font-black text-[#0058be] uppercase px-1">Code d'accès administrateur</label>
               <div className="relative">
                 <input 
-                  type="text" 
+                  type="password" /* <-- Changé en password pour masquer la frappe */
                   required={!isLogin} 
                   className="w-full bg-blue-50 border-none rounded-2xl px-5 py-4 text-sm font-bold text-[#0058be] shadow-inner focus:ring-2 focus:ring-[#0058be]/20" 
-                  placeholder="Ex: TEST2027" 
+                  placeholder="••••••••" /* <-- La réponse n'est plus écrite ici ! */
                   value={accessCode} 
                   onChange={e => setAccessCode(e.target.value)} 
                 />
