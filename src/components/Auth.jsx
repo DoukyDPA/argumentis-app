@@ -102,7 +102,7 @@ export const Auth = ({ onBack }) => {
           {/* NOUVEAU : LE CHAMP CODE D'ACCÈS (Visible seulement pour l'inscription) */}
           {!isLogin && (
             <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
-              <label className="text-[10px] font-black text-[#0058be] uppercase px-1">Code d'accès administrateur</label>
+              <label className="text-[10px] font-black text-[#0058be] uppercase px-1">Code d'accès</label>
               <div className="relative">
                 <input 
                   type="password" /* <-- Changé en password pour masquer la frappe */
