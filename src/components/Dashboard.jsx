@@ -22,10 +22,11 @@ export const Dashboard = ({
 }) => {
   
   const handleOpenArchive = (item) => {
-    setResult(item.content);
-    setShowResult(true);
-    setActiveTab(item.type);
-  };
+  setResult(item.content);
+  setShowResult(true);
+  setActiveTab(item.type);
+  setCurrentArchiveId(item.id); // Assurez-vous d'avoir passé setCurrentArchiveId en prop
+};
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
