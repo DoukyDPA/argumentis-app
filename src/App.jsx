@@ -10,6 +10,7 @@ import { Dashboard, modules } from './components/Dashboard';
 import { ResultView } from './components/ResultView';
 import { GenerationForm } from './components/GenerationForm';
 import { extractTextFromPdf } from './utils/pdfHelper'; 
+import { LandingPage } from './components/LandingPage';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('home'); 
@@ -35,6 +36,7 @@ const App = () => {
   const [archives, setArchives] = useState([]); // Les 10 archives
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
+  const [showAuthScreen, setShowAuthScreen] = useState(false);
 
   // 1. BLOC AUTHENTIFICATION ET PROFIL
   useEffect(() => {
@@ -253,7 +255,12 @@ const App = () => {
   };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-[#e6eef6]"><Loader2 className="animate-spin text-[#0058be]" /></div>;
-  if (!user) return <Auth />;
+  if (!user) {
+  if (showAuthScreen) {
+    return <Auth onBack={() => setShowAuthScreen(false)} />;
+  }
+  return <LandingPage onLoginClick={() => setShowAuthScreen(true)} />;
+}
   if (user && (!profile || isEditingProfile)) return <Onboarding user={user} initialData={profile} onComplete={(data) => { setProfile(data); setIsEditingProfile(false); }} />;
 
   return (
