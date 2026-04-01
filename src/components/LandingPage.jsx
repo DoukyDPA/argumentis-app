@@ -1,7 +1,6 @@
 import React from 'react';
 import { ChevronRight, PenTool, BookOpen, ShieldCheck, Brain, Clock, Lock, FileText, CheckCircle2, MessageSquare } from 'lucide-react';
 
-// On change le nom et on ajoute une "prop" onLoginClick
 export const LandingPage = ({ onLoginClick }) => {
   return (
     <div className="min-h-screen bg-[#e6eef6] font-sans text-slate-800 selection:bg-blue-100">
@@ -21,7 +20,6 @@ export const LandingPage = ({ onLoginClick }) => {
             <a href="#cas-usage" className="hover:text-[#0058be] transition-colors">Cas d'usage</a>
             <a href="#securite" className="hover:text-[#0058be] transition-colors">Sécurité</a>
           </nav>
-          {/* Remplacement du lien <a> par un <button> qui déclenche l'affichage de la connexion */}
           <button onClick={onLoginClick} className="bg-[#0058be] text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-blue-800 transition-colors shadow-md">
             Se connecter
           </button>
@@ -42,11 +40,22 @@ export const LandingPage = ({ onLoginClick }) => {
           Argumentis est l'assistant de rédaction intuitif pour les décideurs publics. 
           Gagnez un temps précieux sur vos discours, notes de synthèse et publications, tout en gardant la maîtrise absolue de votre ligne politique.
         </p>
-        <div className="flex flex-col items-center justify-center gap-3">
-          <button onClick={onLoginClick} className="w-full sm:w-auto bg-[#091426] text-white px-8 py-4 rounded-2xl font-bold text-lg hover:bg-[#0058be] transition-colors shadow-xl flex items-center justify-center gap-2">
+        
+        {/* MODIFICATION ICI : Bouton Découvrir et lien S'inscrire */}
+        <div className="flex flex-col items-center justify-center gap-4">
+          <a href="#fonctionnement" className="w-full sm:w-auto bg-[#091426] text-white px-8 py-4 rounded-2xl font-bold text-lg hover:bg-[#0058be] transition-colors shadow-xl flex items-center justify-center gap-2">
             Découvrir l'outil <ChevronRight size={20} />
-          </button>
-          <p className="text-sm text-slate-500 font-medium mt-2">✨ Aucune compétence technique requise.</p>
+          </a>
+          
+          <div className="flex flex-col items-center gap-2 mt-2">
+            <p className="text-sm text-slate-500 font-medium">✨ Aucune compétence technique requise.</p>
+            <button 
+              onClick={onLoginClick} 
+              className="text-sm font-bold text-slate-400 hover:text-[#0058be] transition-colors underline decoration-slate-300 underline-offset-4"
+            >
+              Déjà convaincu ? S'inscrire ou se connecter
+            </button>
+          </div>
         </div>
       </section>
 
