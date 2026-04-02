@@ -40,39 +40,48 @@ const App = () => {
   const [currentArchiveId, setCurrentArchiveId] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        try {
-          const docRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists() && docSnap.data().profile) {
-            setProfile(docSnap.data().profile);
-          } else {
-            setProfile(null); 
-          }
-        } catch (err) { console.error("Erreur profil:", err); }
-        
-        try {
-          const historyRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid, 'context', 'history');
-          const historySnap = await getDoc(historyRef);
-          if (historySnap.exists()) {
-            setChatHistory(historySnap.data().messages || []);
-          } else {
-            setChatHistory([]);
-          }
-        } catch (err) { console.error("Erreur historique:", err); }
-
-      } else {
-        setUser(null); setProfile(null); setChatHistory([]); setDocs([]); setArchives([]);
-        setSelectedDocIds([]); setResult(''); setActiveTab('home'); setInput('');
-        setReferenceText(''); setRefineInput(''); setShowRef(false); setShowResult(false);
-        setDetails({ duree: '', cible: '', objectif: '', interlocuteur: '', plateforme: 'LinkedIn', methodeMemo: 'crochets' });
+  const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    setAuthLoading(true); // On s'assure que le chargement est actif
+    
+    if (currentUser) {
+      setUser(currentUser);
+      
+      // 1. Charger le Profil (CRUCIAL : On attend avec await)
+      try {
+        const docRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists() && docSnap.data().profile) {
+          setProfile(docSnap.data().profile);
+        } else {
+          setProfile(null); 
+        }
+      } catch (err) { 
+        console.error("Erreur profil:", err);
+        setProfile(null);
       }
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+      
+      // 2. Charger l'Historique
+      try {
+        const historyRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', currentUser.uid, 'context', 'history');
+        const historySnap = await getDoc(historyRef);
+        setChatHistory(historySnap.exists() ? (historySnap.data().messages || []) : []);
+      } catch (err) { 
+        console.error("Erreur historique:", err); 
+      }
+
+    } else {
+      // Nettoyage lors de la déconnexion
+      setUser(null); 
+      setProfile(null); 
+      setChatHistory([]);
+      // ... reste de vos nettoyages
+    }
+    
+    setAuthLoading(false); 
+  });
+  
+  return () => unsubscribe();
+}, []);
 
   useEffect(() => {
     if (!user) return;
