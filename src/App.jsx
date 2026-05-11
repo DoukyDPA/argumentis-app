@@ -108,17 +108,20 @@ const App = () => {
   };
 
   const callGemini = async (historyParams, systemInstruction) => {
-  setLoading(true);
-  try {
-    const response = await fetch('/api/gemini', { 
-      method: 'POST', 
-      headers: { 
-        'Content-Type': 'application/json',
-        // NOUVEAU : On envoie le secret (attention, il sera visible dans le navigateur)
-        'x-app-secret': 'X7k9P#m2Lq5!vR8z' 
-      }, 
-      body: JSON.stringify({ historyParams, systemInstruction }) 
-    });
+    setLoading(true);
+    try {
+      // 1. On récupère le token sécurisé généré par Firebase
+      const idToken = await user.getIdToken();
+
+      const response = await fetch('/api/gemini', { 
+        method: 'POST', 
+        headers: { 
+          'Content-Type': 'application/json',
+          // 2. On l'attache aux en-têtes de la requête
+          'Authorization': `Bearer ${idToken}`
+        }, 
+        body: JSON.stringify({ historyParams, systemInstruction }) 
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erreur de génération");
 
