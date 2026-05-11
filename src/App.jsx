@@ -108,13 +108,17 @@ const App = () => {
   };
 
   const callGemini = async (historyParams, systemInstruction) => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/gemini', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ historyParams, systemInstruction }) 
-      });
+  setLoading(true);
+  try {
+    const response = await fetch('/api/gemini', { 
+      method: 'POST', 
+      headers: { 
+        'Content-Type': 'application/json',
+        // NOUVEAU : On envoie le secret (attention, il sera visible dans le navigateur)
+        'x-app-secret': 'X7k9P#m2Lq5!vR8z' 
+      }, 
+      body: JSON.stringify({ historyParams, systemInstruction }) 
+    });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erreur de génération");
 
@@ -145,9 +149,7 @@ const App = () => {
     try {
       const archiveRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives', archiveId);
       await setDoc(archiveRef, { content: newContent, updatedAt: Date.now() }, { merge: true });
-      
-      // AJOUTEZ CETTE LIGNE : Pour rafraîchir le texte en mémoire locale immédiatement
-      setResult(newContent); 
+            setResult(newContent); 
       
     } catch (error) { console.error("Erreur lors de la mise à jour :", error); }
   };
