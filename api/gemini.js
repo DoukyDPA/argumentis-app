@@ -6,8 +6,12 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Méthode non autorisée' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
+
+  // NOUVEAU : Vérification du secret
+  const secret = req.headers['x-app-secret'];
+  if (secret !== process.env.APP_SECRET_TOKEN) {
+    return res.status(401).json({ error: 'Accès refusé. Requête non autorisée.' });
   }
 
   try {
