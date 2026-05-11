@@ -1,22 +1,42 @@
-// api/gemini.js
+import admin from 'firebase-admin';
 
-// Optionnel : Si tu es sur Vercel, cela étend le timeout
+// Initialisation conditionnelle indispensable pour les environnements Serverless (Vercel)
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY))
+    });
+  } catch (error) {
+    console.error('Erreur initialisation Firebase Admin:', error);
+  }
+}
+
 export const config = {
   maxDuration: 60, 
 };
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
-
-  // NOUVEAU : Vérification du secret
-  const secret = req.headers['x-app-secret'];
-  if (secret !== process.env.APP_SECRET_TOKEN) {
-    return res.status(401).json({ error: 'Accès refusé. Requête non autorisée.' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Méthode non autorisée' });
   }
 
+  // 1. Vérification de la présence du token Firebase
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Accès refusé. Non authentifié.' });
+  }
+
+  const idToken = authHeader.split('Bearer ')[1];
+
   try {
+    // 2. Validation cryptographique du token
+    await admin.auth().verifyIdToken(idToken);
+
+    // 3. Si on arrive ici, le visiteur est un utilisateur connecté certifié. On peut appeler Gemini.
     const { historyParams, systemInstruction } = req.body;
-    const apiKey = process.env.VITE_GEMINI_API_KEY; 
+    
+    // N'oubliez pas d'utiliser le nouveau nom de la variable d'environnement
+    const apiKey = process.env.GEMINI_API_KEY; 
 
     if (!apiKey) {
       return res.status(500).json({ error: "Clé API serveur manquante" });
@@ -32,9 +52,7 @@ export default async function handler(req, res) {
     });
 
     if (!response.ok) {
-      // ON CAPTURE LA VRAIE ERREUR GOOGLE ICI AU LIEU DE LEVER UNE EXCEPTION
       const errorData = await response.json().catch(() => null);
-      console.error("Détail erreur Google :", errorData);
       return res.status(response.status).json({ 
         error: errorData?.error?.message || `Erreur API Google : ${response.status}` 
       });
@@ -44,8 +62,7 @@ export default async function handler(req, res) {
     return res.status(200).json(data);
 
   } catch (error) {
-    console.error("Erreur backend:", error);
-    // ON RENVOIE LE MESSAGE D'ERREUR PRÉCIS
-    return res.status(500).json({ error: error.message || "Erreur inattendue du serveur" });
+    console.error("Erreur d'authentification ou backend:", error);
+    return res.status(403).json({ error: "Token invalide ou erreur inattendue du serveur." });
   }
 }
