@@ -97,15 +97,23 @@ const App = () => {
   }, [user]);
 
   const buildSystemPrompt = () => {
-    const activeDocs = docs.filter(d => selectedDocIds.includes(d.id));
-    let prompt = `Tu es Argumentis, la plume de ${profile?.firstName || 'votre utilisateur'}. Il est ${profile?.role || 'élu'} à ${profile?.city || 'sa ville'}. Sa ligne : ${profile?.orientation || 'non définie'}.`;
-    if (activeDocs.length > 0) {
-      prompt += `\n\nCONTEXTE BASE DE SAVOIR :`;
-      activeDocs.forEach(d => prompt += `\n- ${d.title} : ${d.content}`);
-    }
-    if (referenceText) prompt += `\n\nMATÉRIAU SOURCE EXTERNE :\n${referenceText}`;
-    return prompt + `\n\nIncarne parfaitement son rôle avec un ton institutionnel et élégant.`;
-  };
+  const activeDocs = docs.filter(d => selectedDocIds.includes(d.id));
+  let prompt = `Tu es Argumentis, la plume de ${profile?.firstName || 'votre utilisateur'}. Il est ${profile?.role || 'élu'} à ${profile?.city || 'sa ville'}. Sa ligne : ${profile?.orientation || 'non définie'}.`;
+  
+  if (activeDocs.length > 0) {
+    prompt += `\n\nCONTEXTE BASE DE SAVOIR :`;
+    activeDocs.forEach(d => prompt += `\n- ${d.title} : ${d.content}`);
+  }
+  
+  if (referenceText) prompt += `\n\nMATÉRIAU SOURCE EXTERNE :\n${referenceText}`;
+
+  // MODIFICATION ICI : On adapte le ton final selon l'onglet actif
+  if (activeTab === 'social') {
+    return prompt + `\n\nIncarne son rôle avec un ton moderne, direct et engageant, adapté aux réseaux sociaux. Utilise des phrases courtes et un style dynamique.`;
+  }
+  
+  return prompt + `\n\nIncarne parfaitement son rôle avec un ton institutionnel et élégant.`;
+};
 
   const callGemini = async (historyParams, systemInstruction) => {
     setLoading(true);
@@ -189,7 +197,7 @@ const App = () => {
       case 'langage': userQuery = `RÉDIGE UNE FICHE DE LANGAGE. CONSIGNE : ${details.objectif}. SUJET : ${input}.`; break;
       case 'argumentaire': userQuery = `RÉDIGE UNE NOTE DE SYNTHÈSE FACTUELLE. INTERLOCUTEUR : ${details.interlocuteur}. FOND : ${input}.`; break;
       case 'mail': userQuery = `RÉDIGE UN COURRIEL PERSONNALISÉ. INTERLOCUTEUR : ${details.interlocuteur}. OBJECTIF : ${details.objectif}. CONTEXTE : ${input}.`; break;
-      case 'social': userQuery = `RÉDIGE UNE PUBLICATION POUR ${details.plateforme}. TON : ${details.objectif}. SUJET : ${input}.`; break;
+      case 'social': userQuery = `RÉDIGE UNE PUBLICATION POUR ${details.plateforme}. TON : ${details.objectif}. SUJET : ${input}.`; CONSIGNE : Ne sois pas trop formel. Utilise les codes de ${details.plateforme} (hashtags pertinents, sauts de ligne pour la lisibilité). Le message doit être humain et inciter à l'interaction.`;break;
       case 'memoriser':
         const method = details.methodeMemo === 'corps' ? 'loci corporelle' : details.methodeMemo === 'crochets' ? "crochets d'Hérigone" : "balises émotionnelles";
         userQuery = `Expert en mémorisation (méthode ${method}). Crée un tableau Markdown avec des images mentales. TEXTE : ${input}`;
