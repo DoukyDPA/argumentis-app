@@ -173,7 +173,7 @@ export default async function handler(req, res) {
     }
     const clientPrompt =
       typeof systemInstruction === 'string' ? systemInstruction : '';
-    if (clientPrompt.length > 20000) {
+    if (clientPrompt.length > 200000) {
       return res.status(413).json({ error: "Contexte trop volumineux." });
     }
 
