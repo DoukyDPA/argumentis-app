@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Code, Check, Copy, Target, Send, 
-  Loader2, Building2, Edit3, Save, FileDown 
+  Loader2, Edit3, Save, FileDown
 } from 'lucide-react';
 import { formatResult } from '../utils/formatters';
 
@@ -108,10 +108,9 @@ export const ResultView = ({
         
         <div className="border-b-2 border-slate-50 pb-10 mb-12 flex justify-between items-end relative z-10 print:border-slate-300">
           <div className="sans-text">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300 mb-2 print:text-slate-500">Génération Argumentis</p>
-            <p className="text-base font-black text-[#091426] uppercase leading-none mb-1">
-              {profile?.city ? `Administration de ${profile.city}` : 'Espace Argumentis'}
-            </p>
+            {profile?.firstName && (
+              <p className="text-base font-black text-[#091426] uppercase leading-none mb-1">{profile.firstName}</p>
+            )}
             <p className="text-sm font-bold text-slate-400 italic leading-none print:text-slate-600">{profile?.role || ''}</p>
           </div>
           <div className="text-right sans-text relative z-10">
@@ -170,9 +169,10 @@ export const ResultView = ({
 
         <div className="mt-16 pt-12 border-t border-slate-50 flex flex-col items-end relative z-10 print:border-slate-200">
           <div className="text-right">
-            <div className="w-40 h-20 mb-3 opacity-[0.05] flex items-center justify-end grayscale print:opacity-20"><Building2 size={80} /></div>
-            <p className="serif-text font-bold text-2xl text-[#091426] italic leading-none mb-1">{profile?.role || ''}</p>
-            <p className="sans-text text-[11px] text-slate-400 font-black uppercase tracking-widest print:text-slate-500">{profile?.city ? `Territoire de ${profile.city}` : ''}</p>
+            {profile?.firstName && (
+              <p className="serif-text font-bold text-2xl text-[#091426] italic leading-none mb-1">{profile.firstName}</p>
+            )}
+            <p className="sans-text text-[11px] text-slate-400 font-black uppercase tracking-widest print:text-slate-500">{profile?.role || ''}</p>
           </div>
         </div>
       </article>

@@ -1,0 +1,18 @@
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# Variables d'environnement (clés secrètes)
+.env
+.env.local
+.env.*.local
+
+# Système / build / cache
+.DS_Store
+dist/
+vite.config.js.timestamp-*.mjs

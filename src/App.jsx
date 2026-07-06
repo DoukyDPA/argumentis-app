@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 import { collection, onSnapshot, addDoc, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { PenTool, Loader2, UserCircle, LogOut, Home, Folder, ArrowLeft } from 'lucide-react';
-import { auth, db, APP_NAMESPACE } from './config/firebase';
+import { auth, db, APP_NAMESPACE, isAdmin } from './config/firebase';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { Onboarding } from './components/Onboarding';
 import { Auth } from './components/Auth'; 
@@ -32,10 +32,11 @@ const App = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [isEditingProfile, setIsEditingProfile] = useState(false); 
   const [docs, setDocs] = useState([]);
-  const [selectedDocIds, setSelectedDocIds] = useState([]); 
+  const [globalDocs, setGlobalDocs] = useState([]);
+  const [selectedDocIds, setSelectedDocIds] = useState([]);
   const [archives, setArchives] = useState([]); 
   const [isAddingDoc, setIsAddingDoc] = useState(false);
-  const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '' });
+  const [newDoc, setNewDoc] = useState({ title: '', category: 'Référence', content: '', scope: 'perso' });
   const [showAuthScreen, setShowAuthScreen] = useState(false);
   const [currentArchiveId, setCurrentArchiveId] = useState(null);
 
@@ -93,45 +94,91 @@ const App = () => {
     const unsubArch = onSnapshot(archRef, (snap) => {
       setArchives(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.createdAt - a.createdAt).slice(0, 10));
     });
-    return () => { unsubDocs(); unsubArch(); };
+    // Bibliothèque de référence partagée : lecture pour tous les utilisateurs connectés.
+    const globalRef = collection(db, 'artifacts', APP_NAMESPACE, 'shared', 'library', 'documents');
+    const unsubGlobal = onSnapshot(
+      globalRef,
+      (snap) => setGlobalDocs(snap.docs.map(d => ({ id: d.id, isGlobal: true, ...d.data() })).sort((a,b) => b.createdAt - a.createdAt)),
+      (err) => console.error("Erreur docs de référence partagés:", err)
+    );
+    return () => { unsubDocs(); unsubArch(); unsubGlobal(); };
   }, [user]);
 
-  const buildSystemPrompt = () => {
-  const activeDocs = docs.filter(d => selectedDocIds.includes(d.id));
-  let prompt = `Tu es Argumentis, la plume de ${profile?.firstName || 'votre utilisateur'}. Il est ${profile?.role || 'élu'} à ${profile?.city || 'sa ville'}. Sa ligne : ${profile?.orientation || 'non définie'}.`;
-  
-  if (activeDocs.length > 0) {
-    prompt += `\n\nCONTEXTE BASE DE SAVOIR :`;
-    activeDocs.forEach(d => prompt += `\n- ${d.title} : ${d.content}`);
-  }
-  
-  if (referenceText) prompt += `\n\nMATÉRIAU SOURCE EXTERNE :\n${referenceText}`;
+  // --- Navigation : le bouton « retour » du navigateur revient à l'accueil au lieu de quitter l'app. ---
+  const deepView = showResult || activeTab !== 'home' || isEditingProfile || showAuthScreen;
+  const prevDeepRef = useRef(false);
+  const deepRef = useRef(deepView);
+  deepRef.current = deepView;
 
-  // MODIFICATION ICI : On adapte le ton final selon l'onglet actif
-  if (activeTab === 'social') {
-    return prompt + `\n\nIncarne son rôle avec un ton moderne, direct et engageant, adapté aux réseaux sociaux. Utilise des phrases courtes et un style dynamique.`;
-  }
-  
-  return prompt + `\n\nIncarne parfaitement son rôle avec un ton institutionnel et élégant.`;
-};
+  useEffect(() => {
+    // En entrant dans un écran (module, résultat, profil, connexion), on ajoute
+    // une entrée d'historique que le bouton « retour » viendra consommer.
+    if (deepView && !prevDeepRef.current) {
+      window.history.pushState({ argumentis: true }, '');
+    }
+    prevDeepRef.current = deepView;
+  }, [deepView]);
+
+  useEffect(() => {
+    const onPop = () => {
+      if (deepRef.current) {
+        // On remonte à l'accueil plutôt que de quitter l'application.
+        setShowResult(false);
+        setActiveTab('home');
+        setIsEditingProfile(false);
+        setShowAuthScreen(false);
+      }
+      // Déjà à l'accueil : on laisse le navigateur sortir normalement.
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const admin = isAdmin(user);
+  const allDocs = [...globalDocs, ...docs];
+
+  const buildSystemPrompt = () => {
+    const activeDocs = allDocs.filter(d => selectedDocIds.includes(d.id));
+    let prompt = `Tu es Argumentis, la plume de ${profile?.firstName || 'votre utilisateur'}. Il est ${profile?.role || 'élu'} à ${profile?.city || 'sa ville'}. Sa ligne : ${profile?.orientation || 'non définie'}.`;
+    if (activeDocs.length > 0) {
+      prompt += `\n\nCONTEXTE BASE DE SAVOIR :`;
+      activeDocs.forEach(d => prompt += `\n- ${d.title} : ${d.content}`);
+    }
+    if (referenceText) prompt += `\n\nMATÉRIAU SOURCE EXTERNE :\n${referenceText}`;
+    prompt += `\n\nIncarne parfaitement son rôle avec un ton institutionnel et élégant.`;
+    // Les règles de sortie strictes sont désormais ajoutées côté serveur (api/gemini.js).
+    return prompt;
+  };
 
   const callGemini = async (historyParams, systemInstruction) => {
     setLoading(true);
     try {
-      // 1. On récupère le token sécurisé généré par Firebase
-      const idToken = await user.getIdToken();
-
-      const response = await fetch('/api/gemini', { 
-        method: 'POST', 
-        headers: { 
+      // Jeton d'authentification : le serveur refuse toute requête sans compte valide.
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error("Session expirée. Veuillez vous reconnecter.");
+      }
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: {
           'Content-Type': 'application/json',
-          // 2. On l'attache aux en-têtes de la requête
-          'Authorization': `Bearer ${idToken}`
-        }, 
-        body: JSON.stringify({ historyParams, systemInstruction }) 
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ historyParams, systemInstruction })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Erreur de génération");
+      const raw = await response.text();
+      let data;
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch (parseErr) {
+        throw new Error(`Réponse serveur invalide (${response.status}). Le point d'API /api/gemini n'a rien renvoyé. Lancez le serveur avec « npm run dev » (la passerelle Vite gère /api) ou « vercel dev ».`);
+      }
+      if (!response.ok) {
+        const errMsg = typeof data.error === 'string'
+          ? data.error
+          : (data.error?.message || JSON.stringify(data.error) || "Erreur de génération");
+        throw new Error(errMsg);
+      }
 
       let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erreur...";
       const cleanText = text.replace(/^```[a-z]*\n/g, '').replace(/\n```$/g, '');
@@ -160,7 +207,9 @@ const App = () => {
     try {
       const archiveRef = doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'archives', archiveId);
       await setDoc(archiveRef, { content: newContent, updatedAt: Date.now() }, { merge: true });
-            setResult(newContent); 
+      
+      // AJOUTEZ CETTE LIGNE : Pour rafraîchir le texte en mémoire locale immédiatement
+      setResult(newContent); 
       
     } catch (error) { console.error("Erreur lors de la mise à jour :", error); }
   };
@@ -170,21 +219,30 @@ const App = () => {
     catch (error) { console.error("Erreur suppression :", error); }
   };
 
-  const handleUpdateDoc = async (id, updatedData) => {
-    try { await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', id), updatedData, { merge: true }); } 
+  // Retourne la référence de collection cible : bibliothèque partagée (admin) ou base perso.
+  const docsCollection = (isGlobal) => isGlobal
+    ? collection(db, 'artifacts', APP_NAMESPACE, 'shared', 'library', 'documents')
+    : collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents');
+
+  const handleUpdateDoc = async (id, updatedData, isGlobal = false) => {
+    if (isGlobal && !admin) return;
+    try { await setDoc(doc(docsCollection(isGlobal), id), updatedData, { merge: true }); }
     catch (error) { console.error("Erreur mise à jour doc :", error); }
   };
-  
+
   const handleSaveDoc = async () => {
+    const asGlobal = admin && newDoc.scope === 'global';
     try {
-      await addDoc(collection(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents'), { ...newDoc, createdAt: Date.now() });
-      setIsAddingDoc(false); setNewDoc({ title: '', category: 'Référence', content: '' });
+      const { scope, ...docData } = newDoc;
+      await addDoc(docsCollection(asGlobal), { ...docData, createdAt: Date.now() });
+      setIsAddingDoc(false); setNewDoc({ title: '', category: 'Référence', content: '', scope: 'perso' });
     } catch (error) { alert("Erreur sauvegarde : " + error.message); }
   };
 
-  const handleDeleteDoc = async (id) => {
+  const handleDeleteDoc = async (id, isGlobal = false) => {
+    if (isGlobal && !admin) return;
     if (window.confirm("Voulez-vous vraiment supprimer ce document ?")) {
-      try { await deleteDoc(doc(db, 'artifacts', APP_NAMESPACE, 'users', user.uid, 'documents', id)); } 
+      try { await deleteDoc(doc(docsCollection(isGlobal), id)); }
       catch (error) { console.error("Erreur suppression doc :", error); }
     }
   };
@@ -197,7 +255,7 @@ const App = () => {
       case 'langage': userQuery = `RÉDIGE UNE FICHE DE LANGAGE. CONSIGNE : ${details.objectif}. SUJET : ${input}.`; break;
       case 'argumentaire': userQuery = `RÉDIGE UNE NOTE DE SYNTHÈSE FACTUELLE. INTERLOCUTEUR : ${details.interlocuteur}. FOND : ${input}.`; break;
       case 'mail': userQuery = `RÉDIGE UN COURRIEL PERSONNALISÉ. INTERLOCUTEUR : ${details.interlocuteur}. OBJECTIF : ${details.objectif}. CONTEXTE : ${input}.`; break;
-      case 'social': userQuery = `RÉDIGE UNE PUBLICATION POUR ${details.plateforme}. TON : ${details.objectif}. SUJET : ${input}.`; CONSIGNE : Ne sois pas trop formel. Utilise les codes de ${details.plateforme} (hashtags pertinents, sauts de ligne pour la lisibilité). Le message doit être humain et inciter à l'interaction.`;break;
+      case 'social': userQuery = `RÉDIGE UNE PUBLICATION POUR ${details.plateforme}. TON : ${details.objectif}. SUJET : ${input}.`; break;
       case 'memoriser':
         const method = details.methodeMemo === 'corps' ? 'loci corporelle' : details.methodeMemo === 'crochets' ? "crochets d'Hérigone" : "balises émotionnelles";
         userQuery = `Expert en mémorisation (méthode ${method}). Crée un tableau Markdown avec des images mentales. TEXTE : ${input}`;
@@ -242,7 +300,7 @@ const App = () => {
         )}
 
         {!showResult && activeTab !== 'home' && activeTab !== 'docs' && (
-          <GenerationForm activeTab={activeTab} docs={docs} selectedDocIds={selectedDocIds} setSelectedDocIds={setSelectedDocIds} details={details} setDetails={setDetails} input={input} setInput={setInput} showRef={showRef} setShowRef={setShowRef} isReadingPdf={isReadingPdf} handleRefFileUpload={async (e) => { const file = e.target.files[0]; if(!file) return; setIsReadingPdf(true); try { const txt = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await file.text(); setReferenceText(prev => prev ? prev + "\n" + txt : txt); } catch(e) { alert("Erreur."); } setIsReadingPdf(false); }} referenceText={referenceText} setReferenceText={setReferenceText} handleGenerate={handleGenerate} loading={loading} />
+          <GenerationForm activeTab={activeTab} docs={allDocs} selectedDocIds={selectedDocIds} setSelectedDocIds={setSelectedDocIds} details={details} setDetails={setDetails} input={input} setInput={setInput} showRef={showRef} setShowRef={setShowRef} isReadingPdf={isReadingPdf} handleRefFileUpload={async (e) => { const file = e.target.files[0]; if(!file) return; setIsReadingPdf(true); try { const txt = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await file.text(); setReferenceText(prev => prev ? prev + "\n" + txt : txt); } catch(e) { alert("Erreur."); } setIsReadingPdf(false); }} referenceText={referenceText} setReferenceText={setReferenceText} handleGenerate={handleGenerate} loading={loading} />
         )}
 
         {showResult && (
@@ -266,7 +324,7 @@ const App = () => {
         )}
 
         {!showResult && activeTab === 'docs' && (
-          <KnowledgeBase docs={docs} isAddingDoc={isAddingDoc} setIsAddingDoc={setIsAddingDoc} newDoc={newDoc} setNewDoc={setNewDoc} handleSaveDoc={handleSaveDoc} handleDeleteDoc={handleDeleteDoc} handleUpdateDoc={handleUpdateDoc} />
+          <KnowledgeBase docs={docs} globalDocs={globalDocs} isAdmin={admin} isAddingDoc={isAddingDoc} setIsAddingDoc={setIsAddingDoc} newDoc={newDoc} setNewDoc={setNewDoc} handleSaveDoc={handleSaveDoc} handleDeleteDoc={handleDeleteDoc} handleUpdateDoc={handleUpdateDoc} />
         )}
       </main>
 

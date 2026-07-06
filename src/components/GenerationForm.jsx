@@ -1,8 +1,8 @@
 import React from 'react';
-import { 
-  BookOpen, Send, Target, Upload, Loader2, 
-  Linkedin, Twitter, Facebook, Instagram, 
-  ListOrdered, User, Paperclip, CheckCircle2, Circle
+import {
+  BookOpen, Send, Target, Upload, Loader2,
+  Linkedin, Twitter, Facebook, Instagram,
+  ListOrdered, User, Paperclip, CheckCircle2, Circle, ShieldCheck
 } from 'lucide-react';
 import { modules } from './Dashboard';
 
@@ -56,12 +56,14 @@ export const GenerationForm = ({
                     );
                   }}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 ${
-                    isSelected 
-                      ? 'bg-[#0058be] text-white border-[#0058be] shadow-md' 
-                      : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-blue-200'
+                    isSelected
+                      ? 'bg-[#0058be] text-white border-[#0058be] shadow-md'
+                      : doc.isGlobal
+                        ? 'bg-blue-50 text-[#0058be] border-blue-100 hover:border-blue-300'
+                        : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-blue-200'
                   }`}
                 >
-                  {isSelected ? <CheckCircle2 size={14} /> : <Circle size={14} className="opacity-30" />}
+                  {isSelected ? <CheckCircle2 size={14} /> : (doc.isGlobal ? <ShieldCheck size={14} className="opacity-70" /> : <Circle size={14} className="opacity-30" />)}
                   {doc.title}
                 </button>
               );

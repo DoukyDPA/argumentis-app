@@ -21,3 +21,12 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 export const APP_NAMESPACE = 'argumentis-prod-v1';
+
+// Emails autorisés à publier des données de référence pour tous les utilisateurs.
+export const ADMIN_EMAILS = ['daniel.p.angelini@gmail.com'];
+
+export const isAdmin = (user) =>
+  !!user?.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
+
+// Emplacement Firestore de la bibliothèque de référence partagée (lecture pour tous, écriture admin).
+export const SHARED_LIBRARY_PATH = ['artifacts', APP_NAMESPACE, 'shared', 'library', 'documents'];

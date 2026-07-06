@@ -1,0 +1,34 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Liste des administrateurs autorisés à publier des références partagées.
+    // Doit rester synchronisée avec ADMIN_EMAILS dans src/config/firebase.js.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+          'daniel.p.angelini@gmail.com'
+        ];
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    match /artifacts/{namespace} {
+
+      // Données personnelles de chaque utilisateur (profil, documents, archives, contexte).
+      match /users/{uid}/{document=**} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
+
+      // Bibliothèque de référence partagée : lecture pour tous les connectés, écriture admin.
+      match /shared/{document=**} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+    }
+  }
+}
